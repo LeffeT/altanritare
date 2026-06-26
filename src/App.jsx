@@ -186,8 +186,9 @@ const DEFAULT_PROJECT = {
 /* ===========================================================================
    STARTSKÄRM
    ===========================================================================*/
-function StartScreen({ onStart }) {
+function StartScreen({ onStart, saves = {}, onOpen, onDelete, resumeName, onResume, onOpenFile }) {
   const [name, setName] = useState("Mitt altanprojekt");
+  const savedList = Object.entries(saves).sort((a, b) => (b[1].savedAt || 0) - (a[1].savedAt || 0));
   const choices = [
     { id: "deck", title: "Rita altan", desc: "Börja med altanens mått och placering", Icon: Square, accent: T.wood },
     { id: "house", title: "Rita hus", desc: "Lägg till husvägg och husmått", Icon: Home, accent: T.sky },
@@ -257,6 +258,58 @@ function StartScreen({ onStart }) {
             </button>
           ))}
         </div>
+        {/* Fortsätt / öppna sparade projekt */}
+        <div style={{ marginTop: 30, borderTop: `1px solid ${T.line}`, paddingTop: 22 }}>
+          {resumeName && (
+            <button
+              onClick={onResume}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                background: T.panel, border: `1px solid ${T.wood}`, color: T.text,
+                padding: "13px 15px", borderRadius: 12, cursor: "pointer", marginBottom: 18,
+              }}
+            >
+              <div style={{ width: 34, height: 34, borderRadius: 9, display: "grid", placeItems: "center", background: T.panel2, color: T.wood, flexShrink: 0 }}>
+                <RotateCcw size={18} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 650, fontSize: 15 }}>Fortsätt där du var</div>
+                <div style={{ color: T.dim, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resumeName}</div>
+              </div>
+              <ChevronRight size={16} style={{ color: T.wood, flexShrink: 0 }} />
+            </button>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: T.dim, letterSpacing: 0.5, textTransform: "uppercase" }}>Sparade projekt</span>
+            {onOpenFile && (
+              <button onClick={onOpenFile} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 9, padding: "6px 11px", cursor: "pointer", fontSize: 12.5 }}>
+                <FolderOpen size={14} /> Öppna fil
+              </button>
+            )}
+          </div>
+
+          {savedList.length === 0 ? (
+            <div style={{ fontSize: 13, color: T.dim, padding: "4px 0 2px" }}>Inga sparade projekt än. Skapa ett nytt ovan.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {savedList.map(([pname, s]) => (
+                <div key={pname} style={{ display: "flex", alignItems: "center", gap: 8, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "9px 11px" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: T.panel2, color: T.wood, flexShrink: 0 }}>
+                    <Save size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pname}</div>
+                    <div style={{ fontSize: 11.5, color: T.dim }}>{s.savedAt ? new Date(s.savedAt).toLocaleDateString("sv-SE", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</div>
+                  </div>
+                  <button onClick={() => onOpen && onOpen(pname)} style={{ background: T.wood, color: "#1a1206", border: "none", borderRadius: 8, padding: "7px 13px", cursor: "pointer", fontSize: 13, fontWeight: 650, flexShrink: 0 }}>Öppna</button>
+                  <button onClick={() => onDelete && onDelete(pname)} title="Ta bort" style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 8, padding: "7px 10px", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>Ta bort</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <p style={{ color: "#5b6675", fontSize: 12, marginTop: 24 }}>
           Du kan ändra allt senare. Verktyget är förenklat — inte avancerat CAD. <span style={{ color: T.wood }}>{APP_VERSION}</span>
         </p>
@@ -1910,10 +1963,10 @@ export default function App() {
   }, []);
 
   const start = (name, choice) => {
-    setProject((p) => ({
-      ...p, name,
-      deck: { ...p.deck, hasRoof: choice === "roof" ? true : p.deck.hasRoof },
-    }));
+    setProject({
+      ...DEFAULT_PROJECT, name,
+      deck: { ...DEFAULT_PROJECT.deck, hasRoof: choice === "roof" ? true : DEFAULT_PROJECT.deck.hasRoof },
+    });
     setOpenSection(choice);
     setView(choice === "roof" ? "3d" : "2d");
     setStarted(true);
@@ -1921,12 +1974,13 @@ export default function App() {
 
   // --- Spara / öppna projekt ---
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [resume, setResume] = useState(null); // namn på autosparat projekt att fortsätta på
   const [saves, setSaves] = useState({});
   const [toast, setToast] = useState(null);
   const fileRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
-  // Autoladda senaste arbetet vid start
+  // Vid start: läs in sparade projekt och förbered ev. "Fortsätt", men stanna på startsidan
   useEffect(() => {
     setSaves(loadSaves());
     try {
@@ -1935,11 +1989,21 @@ export default function App() {
         const data = JSON.parse(auto);
         if (data && data.house && data.deck) {
           setProject({ ...DEFAULT_PROJECT, ...data, railing: { ...DEFAULT_PROJECT.railing, ...(data.railing || {}) } });
-          setStarted(true);
+          setResume((data.name || "").trim() || "Senaste projektet");
         }
       }
     } catch (_) { /* ignorera */ }
   }, []);
+
+  // Fortsätt på det autosparade projektet (redan inläst i state ovan)
+  const resumeProject = () => { setStarted(true); };
+
+  // Tillbaka till startsidan – uppdatera listan och "Fortsätt"
+  const goHome = () => {
+    setSaves(loadSaves());
+    setResume((project.name || "").trim() || "Senaste projektet");
+    setStarted(false);
+  };
 
   // Autospara löpande
   useEffect(() => {
@@ -2028,7 +2092,18 @@ export default function App() {
   if (!started) {
     return (<>
       <style>{PRINT_CSS}</style>
-      <div style={{ position: "fixed", inset: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", fontFamily: FONT }}><StartScreen onStart={start} /></div>
+      <div style={{ position: "fixed", inset: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", fontFamily: FONT }}>
+        <StartScreen
+          onStart={start}
+          saves={saves}
+          onOpen={loadProject}
+          onDelete={deleteProject}
+          resumeName={resume}
+          onResume={resumeProject}
+          onOpenFile={() => fileRef.current && fileRef.current.click()}
+        />
+        <input ref={fileRef} type="file" accept="application/json,.json" onChange={importProjectFile} style={{ display: "none" }} />
+      </div>
     </>);
   }
 
@@ -2050,7 +2125,7 @@ export default function App() {
               <Menu size={18} />
             </button>
           ) : (
-            <button onClick={() => setStarted(false)} title="Till start" style={{ display: "flex", alignItems: "center", gap: 9, background: "transparent", border: "none", color: T.text, cursor: "pointer" }}>
+            <button onClick={goHome} title="Till start" style={{ display: "flex", alignItems: "center", gap: 9, background: "transparent", border: "none", color: T.text, cursor: "pointer" }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: `linear-gradient(135deg, ${T.wood}, ${T.woodDark})`, color: "#1a1206" }}><Ruler size={17} /></div>
               <span style={{ fontWeight: 700, fontSize: 14.5 }}>Altanritare</span>
             </button>
