@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.7 · antal stående brädor";
+const APP_VERSION = "v1.8 · justerbar nockhöjd";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -428,6 +428,20 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
           <NumberField label="Husets djup" value={project.house.depth} onChange={(v) => setHouse("depth", v)} min={1} max={60} />
           <NumberField label="Vägghöjd (till takfot)" value={project.house.height} onChange={(v) => setHouse("height", v)} min={2} max={20} />
           <NumberField label="Takvinkel (hus)" unit="°" value={project.house.roofPitch} onChange={(v) => setHouse("roofPitch", v)} step={1} min={5} max={60} />
+          <NumberField
+            label="Nockhöjd (mark → nock)"
+            value={project.house.height + (project.house.depth / 2) * Math.tan((project.house.roofPitch * Math.PI) / 180)}
+            onChange={(v) => {
+              const halfD = Math.max(0.1, project.house.depth / 2);
+              const rise = Math.max(0, v - project.house.height);
+              const deg = clamp((Math.atan2(rise, halfD) * 180) / Math.PI, 5, 60);
+              setHouse("roofPitch", Math.round(deg * 10) / 10);
+            }}
+            step={0.1} min={2} max={40}
+          />
+          <div style={{ fontSize: 11.5, color: T.dim, marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
+            Takvinkel och nockhöjd hänger ihop — ändrar du den ena justeras den andra automatiskt. Mät nockhöjden från marken så stämmer vinkeln med ditt hus.
+          </div>
           <NumberField label="Takutsprång (befintligt tak)" value={project.house.overhang} onChange={(v) => setHouse("overhang", v)} min={0} max={3} />
 
           <div style={{ marginTop: 6, paddingTop: 12, borderTop: `1px solid ${T.line}` }}>
