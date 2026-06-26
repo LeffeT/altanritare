@@ -186,7 +186,7 @@ const DEFAULT_PROJECT = {
 /* ===========================================================================
    STARTSKÄRM
    ===========================================================================*/
-function StartScreen({ onStart, saves = {}, onOpen, onDelete, resumeName, onResume, onOpenFile }) {
+function StartScreen({ onStart, saves = {}, onOpen, onDelete, onOpenFile }) {
   const [name, setName] = useState("Mitt altanprojekt");
   const savedList = Object.entries(saves).sort((a, b) => (b[1].savedAt || 0) - (a[1].savedAt || 0));
   const choices = [
@@ -258,28 +258,8 @@ function StartScreen({ onStart, saves = {}, onOpen, onDelete, resumeName, onResu
             </button>
           ))}
         </div>
-        {/* Fortsätt / öppna sparade projekt */}
+        {/* Öppna sparade projekt */}
         <div style={{ marginTop: 30, borderTop: `1px solid ${T.line}`, paddingTop: 22 }}>
-          {resumeName && (
-            <button
-              onClick={onResume}
-              style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-                background: T.panel, border: `1px solid ${T.wood}`, color: T.text,
-                padding: "13px 15px", borderRadius: 12, cursor: "pointer", marginBottom: 18,
-              }}
-            >
-              <div style={{ width: 34, height: 34, borderRadius: 9, display: "grid", placeItems: "center", background: T.panel2, color: T.wood, flexShrink: 0 }}>
-                <RotateCcw size={18} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 650, fontSize: 15 }}>Fortsätt där du var</div>
-                <div style={{ color: T.dim, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resumeName}</div>
-              </div>
-              <ChevronRight size={16} style={{ color: T.wood, flexShrink: 0 }} />
-            </button>
-          )}
-
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: T.dim, letterSpacing: 0.5, textTransform: "uppercase" }}>Sparade projekt</span>
             {onOpenFile && (
@@ -1974,34 +1954,19 @@ export default function App() {
 
   // --- Spara / öppna projekt ---
   const [projectsOpen, setProjectsOpen] = useState(false);
-  const [resume, setResume] = useState(null); // namn på autosparat projekt att fortsätta på
   const [saves, setSaves] = useState({});
   const [toast, setToast] = useState(null);
   const fileRef = useRef(null);
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
-  // Vid start: läs in sparade projekt och förbered ev. "Fortsätt", men stanna på startsidan
+  // Vid start: läs in sparade projekt (stanna på startsidan)
   useEffect(() => {
     setSaves(loadSaves());
-    try {
-      const auto = lsGet(LS_AUTO);
-      if (auto) {
-        const data = JSON.parse(auto);
-        if (data && data.house && data.deck) {
-          setProject({ ...DEFAULT_PROJECT, ...data, railing: { ...DEFAULT_PROJECT.railing, ...(data.railing || {}) } });
-          setResume((data.name || "").trim() || "Senaste projektet");
-        }
-      }
-    } catch (_) { /* ignorera */ }
   }, []);
 
-  // Fortsätt på det autosparade projektet (redan inläst i state ovan)
-  const resumeProject = () => { setStarted(true); };
-
-  // Tillbaka till startsidan – uppdatera listan och "Fortsätt"
+  // Tillbaka till startsidan – uppdatera listan
   const goHome = () => {
     setSaves(loadSaves());
-    setResume((project.name || "").trim() || "Senaste projektet");
     setStarted(false);
   };
 
@@ -2098,8 +2063,6 @@ export default function App() {
           saves={saves}
           onOpen={loadProject}
           onDelete={deleteProject}
-          resumeName={resume}
-          onResume={resumeProject}
           onOpenFile={() => fileRef.current && fileRef.current.click()}
         />
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={importProjectFile} style={{ display: "none" }} />
