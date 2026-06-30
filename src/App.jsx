@@ -3,7 +3,7 @@ import * as THREE from "three";
 import {
   Home, Square, Ruler, FileText, Download, Box, Layers,
   RotateCcw, Pencil, ChevronRight, TriangleRight, Maximize, Minimize,
-  Hammer, ChevronDown, Menu, Save, FolderOpen
+  Hammer, ChevronDown, Menu, Save, FolderOpen, Plus
 } from "lucide-react";
 
 /* ===========================================================================
@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.8 · justerbar nockhöjd";
+const APP_VERSION = "v1.10 · öppningar i nischen";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -108,6 +108,16 @@ function planGeom(p) {
   return { rd, recL, recR, innerY, frontY: p.house.depth, eavesY, deckFrontY, coveredDepth, utstick };
 }
 
+// Sitter öppningen i nischen (på innerväggen mot altanen) eller på ytterväggen?
+function openingOnNiche(o, house) {
+  const r = house.recess;
+  if (!r || !r.on || (r.depth || 0) <= 0.001) return false;
+  const hw = house.width / 2;
+  const recL = clamp(r.offset - r.width / 2, -hw, hw);
+  const recR = clamp(r.offset + r.width / 2, -hw, hw);
+  return o.x >= recL && o.x <= recR;
+}
+
 // Materialberäkning för altantaket (mängder ur takets mått + valda cc-avstånd)
 function computeBom(p) {
   const d = derive(p);
@@ -155,11 +165,18 @@ function loadSaves() {
 }
 function storeSaves(obj) { lsSet(LS_SAVES, JSON.stringify(obj)); }
 
+// Skapa en ny öppning (fönster eller altandörr) med rimliga standardmått
+const newOpening = (kind) =>
+  kind === "door"
+    ? { id: Math.random().toString(36).slice(2, 9), kind: "door", x: 0, w: 1.6, h: 2.1, sill: 0 }
+    : { id: Math.random().toString(36).slice(2, 9), kind: "window", x: 0, w: 1.0, h: 1.2, sill: 0.9 };
+
 const DEFAULT_PROJECT = {
   name: "Mitt altanprojekt",
   house: {
     width: 18, depth: 9, height: 5, overhang: 1.5, roofPitch: 24,
     recess: { on: true, width: 9, depth: 1.5, offset: 0 }, // indrag i fasaden
+    openings: [], // fönster & altandörrar på framsidan
   },
   deck: {
     width: 8, depth: 4, height: 0.4, offset: 0, posts: 3,
@@ -377,6 +394,11 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
   const setRecess = (k, v) => set((p) => ({ ...p, house: { ...p.house, recess: { ...p.house.recess, [k]: v } } }));
   const setRail = (k, v) => set((p) => ({ ...p, railing: { ...p.railing, [k]: v } }));
   const setStairs = (k, v) => set((p) => ({ ...p, stairs: { ...p.stairs, [k]: v } }));
+  // Fönster & altandörrar
+  const openings = project.house.openings || [];
+  const addOpening = (kind) => set((p) => ({ ...p, house: { ...p.house, openings: [...(p.house.openings || []), newOpening(kind)] } }));
+  const updateOpening = (id, k, v) => set((p) => ({ ...p, house: { ...p.house, openings: (p.house.openings || []).map((o) => (o.id === id ? { ...o, [k]: v } : o)) } }));
+  const removeOpening = (id) => set((p) => ({ ...p, house: { ...p.house, openings: (p.house.openings || []).filter((o) => o.id !== id) } }));
   // Flytta altanen i sidled och låt nischen följa med samma steg
   const moveDeckOffset = (v) => set((p) => {
     const dx = v - p.deck.offset;
@@ -462,6 +484,48 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
               </>
             )}
           </div>
+        </Section>
+
+        {/* FÖNSTER & DÖRRAR */}
+        <Section title="Fönster & dörrar" Icon={Square} accent={T.cyan} open={openSection === "openings"} onToggle={() => toggle("openings")}>
+          <div style={{ fontSize: 12.5, color: T.dim, marginBottom: 11, lineHeight: 1.5 }}>
+            Lägg till och dra dem i sidled i 2D-vyn. Drar du in en öppning i nischen sätter den sig på innerväggen mot altanen.
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: openings.length ? 14 : 2 }}>
+            <button onClick={() => addOpening("window")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.sky}`, color: T.sky, borderRadius: 9, padding: "9px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+              <Plus size={14} /> Fönster
+            </button>
+            <button onClick={() => addOpening("door")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.wood}`, color: T.wood, borderRadius: 9, padding: "9px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+              <Plus size={14} /> Altandörr
+            </button>
+          </div>
+          {openings.length === 0 ? (
+            <div style={{ fontSize: 13, color: T.dim, padding: "2px 0" }}>Inga tillagda än.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {openings.map((o, i) => {
+                const isDoor = o.kind === "door";
+                const label = isDoor
+                  ? `Altandörr ${openings.slice(0, i + 1).filter((x) => x.kind === "door").length}`
+                  : `Fönster ${openings.slice(0, i + 1).filter((x) => x.kind === "window").length}`;
+                const xLim = Math.max(0, project.house.width / 2 - o.w / 2);
+                return (
+                  <div key={o.id} style={{ background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 11, padding: "11px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 650, color: isDoor ? T.wood : T.sky }}>{label}</span>
+                      <button onClick={() => removeOpening(o.id)} style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 12 }}>Ta bort</button>
+                    </div>
+                    <NumberField label="Bredd" value={o.w} onChange={(v) => updateOpening(o.id, "w", v)} min={0.3} max={Math.max(0.5, project.house.width)} />
+                    <NumberField label="Höjd" value={o.h} onChange={(v) => updateOpening(o.id, "h", v)} min={0.3} max={Math.max(0.5, project.house.height)} />
+                    {!isDoor && (
+                      <NumberField label="Underkant över mark" value={o.sill} onChange={(v) => updateOpening(o.id, "sill", v)} min={0} max={Math.max(0, project.house.height - 0.3)} />
+                    )}
+                    <NumberField label="Placering i sidled (− vänster / + höger)" value={o.x} onChange={(v) => updateOpening(o.id, "x", clamp(v, -xLim, xLim))} min={-xLim} max={xLim} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Section>
 
         {/* ALTAN */}
@@ -701,9 +765,20 @@ function Plan2D({ project, set }) {
     const scale = r.width / W;
     const px = (e.clientX - r.left) / scale;
     const py = (e.clientY - r.top) / scale;
+    // Fönster/altandörrar på framsidan (prioriteras vid klick)
+    const ops = house.openings || [];
+    for (let i = ops.length - 1; i >= 0; i--) {
+      const o = ops[i];
+      const yLine = openingOnNiche(o, house) ? Y(g.innerY) : Y(house.depth);
+      if (px > X(o.x - o.w / 2) - 6 && px < X(o.x + o.w / 2) + 6 && py > yLine - 11 && py < yLine + 11) {
+        drag.current = { type: "opening", id: o.id, w: o.w, startPx: px, startX: o.x };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        return;
+      }
+    }
     if (px > X(deck.offset - deck.width / 2) - 12 && px < X(deck.offset + deck.width / 2) + 12 &&
         py > Y(yDeckBack) - 6 && py < Y(yDeckFront) + 6) {
-      drag.current = { startPx: px, startOffset: deck.offset };
+      drag.current = { type: "deck", startPx: px, startOffset: deck.offset };
       e.currentTarget.setPointerCapture?.(e.pointerId);
     }
   };
@@ -713,6 +788,13 @@ function Plan2D({ project, set }) {
     const scale = r.width / W;
     const px = (e.clientX - r.left) / scale;
     const dm = (px - drag.current.startPx) / s;
+    if (drag.current.type === "opening") {
+      const lim = Math.max(0, house.width / 2 - drag.current.w / 2);
+      const nx = clamp(Math.round((drag.current.startX + dm) * 20) / 20, -lim, lim);
+      const id = drag.current.id;
+      set((p) => ({ ...p, house: { ...p.house, openings: (p.house.openings || []).map((o) => (o.id === id ? { ...o, x: nx } : o)) } }));
+      return;
+    }
     const lim = house.width / 2 + deck.width / 2;
     const off = clamp(Math.round((drag.current.startOffset + dm) * 20) / 20, -lim, lim);
     set((p) => {
@@ -804,6 +886,20 @@ function Plan2D({ project, set }) {
             }
             return <g>{parts}</g>;
           })()}
+          {/* Fönster & altandörrar på framsidan (dragbara i sidled) */}
+          {(house.openings || []).map((o) => {
+            const isDoor = o.kind === "door";
+            const yLine = openingOnNiche(o, house) ? Y(g.innerY) : Y(house.depth);
+            return (
+              <g key={o.id} style={{ cursor: "grab" }}>
+                <rect x={X(o.x - o.w / 2)} y={yLine - 5} width={o.w * s} height={10} rx={2}
+                  fill={isDoor ? "rgba(201,138,60,0.55)" : "rgba(126,180,230,0.6)"}
+                  stroke={isDoor ? T.wood : T.sky} strokeWidth="1.6" />
+                <text x={X(o.x)} y={yLine - 9} fill={isDoor ? T.wood : T.sky} fontSize="9.5" fontFamily={FONT} textAnchor="middle">{isDoor ? "DÖRR" : "FÖNSTER"}</text>
+              </g>
+            );
+          })}
+
           {/* Tomtgränser (fasta linjer) */}
           {b.front.on && (
             <g>
@@ -1017,6 +1113,8 @@ function View3D({ project }) {
       eaves: new THREE.MeshStandardMaterial({ color: 0x8a93a0, roughness: 0.8, transparent: true, opacity: 0.28, side: THREE.DoubleSide }),
       houseRoof: new THREE.MeshStandardMaterial({ color: 0x4a5360, roughness: 0.85, side: THREE.DoubleSide }),
       gable: new THREE.MeshStandardMaterial({ color: 0xc4ccd4, roughness: 0.9, side: THREE.DoubleSide }),
+      glass: new THREE.MeshStandardMaterial({ color: 0x21323f, roughness: 0.12, metalness: 0.35, side: THREE.DoubleSide }),
+      frame: new THREE.MeshStandardMaterial({ color: 0xeef1f4, roughness: 0.7, side: THREE.DoubleSide }),
     };
     const addQuad = (a, b, c, d, material) => {
       const geo = new THREE.BufferGeometry();
@@ -1080,6 +1178,20 @@ function View3D({ project }) {
         addQuad([xR, yE, zB], [xL, yE, zB], [xL, yR, zRidge], [xR, yR, zRidge], mat.houseRoof);
         addTri([-house.width / 2, yE, frontWallZ], [-house.width / 2, yE, backWallZ], [-house.width / 2, yR, zRidge], mat.gable);
         addTri([house.width / 2, yE, frontWallZ], [house.width / 2, yE, backWallZ], [house.width / 2, yR, zRidge], mat.gable);
+      }
+
+      // Fönster & altandörrar på framsidan (ytterväggen vid z=rd, eller innerväggen i nischen vid z=0)
+      {
+        (house.openings || []).forEach((o) => {
+          const zBase = openingOnNiche(o, house) ? 0 : rd;
+          const zFace = zBase + 0.03;
+          const w = o.w, sill = o.kind === "door" ? 0 : o.sill;
+          const y0 = sill, y1 = Math.min(house.height - 0.02, sill + o.h);
+          if (y1 <= y0) return;
+          const xL = o.x - w / 2, xR = o.x + w / 2;
+          addQuad([xL - 0.06, y0 - 0.06, zFace], [xR + 0.06, y0 - 0.06, zFace], [xR + 0.06, y1 + 0.06, zFace], [xL - 0.06, y1 + 0.06, zFace], mat.frame);
+          addQuad([xL, y0, zFace + 0.012], [xR, y0, zFace + 0.012], [xR, y1, zFace + 0.012], [xL, y1, zFace + 0.012], mat.glass);
+        });
       }
 
       // Altangolv (slab i +z från innerväggen)
@@ -1421,6 +1533,20 @@ function FacadeDrawing({ project, width = 720 }) {
       <rect x="0" y="0" width={width} height={H} fill="#fff" />
       {/* hus bakom */}
       <rect x={X(-house.width / 2)} y={Y(house.height)} width={house.width * s} height={house.height * s} fill="#f1f3f6" stroke="#94a3b8" strokeWidth="1.2" />
+      {/* fönster & altandörrar på fasaden */}
+      {(house.openings || []).map((o) => {
+        const isDoor = o.kind === "door";
+        const sill = isDoor ? 0 : o.sill;
+        const top = Math.min(house.height, sill + o.h);
+        if (top <= sill) return null;
+        return (
+          <g key={o.id}>
+            <rect x={X(o.x - o.w / 2)} y={Y(top)} width={o.w * s} height={(top - sill) * s} fill={isDoor ? "#dcc4a3" : "#cfe0f0"} stroke="#5a6b7d" strokeWidth="1.1" />
+            {!isDoor && <line x1={X(o.x)} y1={Y(top)} x2={X(o.x)} y2={Y(sill)} stroke="#5a6b7d" strokeWidth="0.7" />}
+            {!isDoor && <line x1={X(o.x - o.w / 2)} y1={Y(sill + o.h / 2)} x2={X(o.x + o.w / 2)} y2={Y(sill + o.h / 2)} stroke="#5a6b7d" strokeWidth="0.7" />}
+          </g>
+        );
+      })}
       {/* takets nock (bakkant) streckad */}
       {deck.hasRoof && <line x1={X(deck.offset - roof.width / 2)} y1={Y(rw)} x2={X(deck.offset + roof.width / 2)} y2={Y(rw)} stroke="#94a3b8" strokeWidth="1" strokeDasharray="4 4" />}
       {/* stolpar: jämnt fördelade, från mark upp till tak (eller golv) */}
