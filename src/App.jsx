@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.11 · valbar höjd på öppningar";
+const APP_VERSION = "v1.12 · kortsidesstolpar, dragbar trappa, +/− fält";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -179,7 +179,7 @@ const DEFAULT_PROJECT = {
     openings: [], // fönster & altandörrar på framsidan
   },
   deck: {
-    width: 8, depth: 4, height: 0.4, offset: 0, posts: 3,
+    width: 8, depth: 4, height: 0.4, offset: 0, posts: 3, sidePosts: false,
     hasRoof: true, roofAttach: "attached", // attached | free
   },
   railing: { on: true, height: 1.0, type: "vertical", back: false, rows: 4, vcount: 40 }, // rows=liggande, vcount=stående
@@ -326,18 +326,33 @@ function NumberField({ label, value, onChange, unit = "m", step = 0.1, min = 0, 
     const v = parseFloat(s.replace(",", "."));
     if (!isNaN(v)) onChange(clamp(v, min, max));
   };
+  const bump = (dir) => {
+    const base = parseFloat(String(txt).replace(",", "."));
+    const cur = isNaN(base) ? (value || 0) : base;
+    const dec = (String(step).split(".")[1] || "").length;
+    const next = clamp(Math.round((cur + dir * step) / step) * step, min, max);
+    const rounded = +next.toFixed(Math.max(dec, 0));
+    setTxt(num(rounded));
+    onChange(rounded);
+  };
+  const btn = {
+    width: 40, flexShrink: 0, display: "grid", placeItems: "center", cursor: "pointer",
+    background: "#10161e", border: "none", color: T.text, fontSize: 20, lineHeight: 1, userSelect: "none", WebkitUserSelect: "none",
+  };
   return (
     <label style={{ display: "block", marginBottom: 12 }}>
       <span style={{ fontSize: 12.5, color: T.dim, display: "block", marginBottom: 5 }}>{label}</span>
       <div style={{ display: "flex", alignItems: "stretch", background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 9, overflow: "hidden" }}>
+        <button type="button" onClick={() => bump(-1)} aria-label="Minska" style={{ ...btn, borderRight: `1px solid ${T.line}` }}>−</button>
         <input
           value={txt}
           inputMode="decimal"
           onChange={(e) => handle(e.target.value)}
           onBlur={() => setTxt(num(value))}
-          style={{ flex: 1, padding: "9px 11px", background: "transparent", border: "none", color: T.text, fontSize: 14.5, outline: "none", width: "100%" }}
+          style={{ flex: 1, minWidth: 0, padding: "9px 6px", background: "transparent", border: "none", color: T.text, fontSize: 14.5, outline: "none", textAlign: "center" }}
         />
-        <span style={{ display: "grid", placeItems: "center", padding: "0 11px", color: T.dim, fontSize: 12.5, background: "#10161e", borderLeft: `1px solid ${T.line}` }}>{unit}</span>
+        <span style={{ display: "grid", placeItems: "center", padding: "0 9px", color: T.dim, fontSize: 12.5, background: "#10161e", borderLeft: `1px solid ${T.line}` }}>{unit}</span>
+        <button type="button" onClick={() => bump(1)} aria-label="Öka" style={{ ...btn, borderLeft: `1px solid ${T.line}` }}>+</button>
       </div>
     </label>
   );
@@ -550,6 +565,13 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
               Centrumavstånd c/c ≈ {m(project.deck.width / (Math.round(project.deck.posts) - 1))} · går från mark till tak
             </div>
           )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <span style={{ fontSize: 13.5 }}>Stolpar på kortsidorna</span>
+            <Switch on={!!project.deck.sidePosts} onChange={(v) => setDeck("sidePosts", v)} />
+          </div>
+          <div style={{ fontSize: 11.5, color: T.dim, marginBottom: 6 }}>
+            Sätter stolpar även längs altanens kortsidor, i linje med räckets sidostolpar.
+          </div>
 
           <div style={{ margin: "14px 0 6px", fontSize: 12.5, color: T.dim }}>Tak</div>
           <Toggle value={project.deck.hasRoof ? "yes" : "no"} onChange={(v) => setDeck("hasRoof", v === "yes")}
@@ -778,6 +800,27 @@ function Plan2D({ project, set }) {
         return;
       }
     }
+    // Trappa (dragbar – längs sin sida)
+    const sgd = stairGeom(project);
+    if (sgd.on) {
+      let sx0, sx1, sy0, sy1;
+      if (sgd.side === "front") {
+        sx0 = X(sgd.cx - sgd.sw / 2); sx1 = X(sgd.cx + sgd.sw / 2);
+        sy0 = Y(yDeckFront); sy1 = Y(yDeckFront + sgd.proj);
+      } else {
+        const dir = sgd.side === "left" ? -1 : 1;
+        const edge = sgd.side === "left" ? deck.offset - deck.width / 2 : deck.offset + deck.width / 2;
+        const yMid = yDeckBack + sgd.cz;
+        const xa = X(edge), xb = X(edge + dir * sgd.proj);
+        sx0 = Math.min(xa, xb); sx1 = Math.max(xa, xb);
+        sy0 = Y(yMid - sgd.sw / 2); sy1 = Y(yMid + sgd.sw / 2);
+      }
+      if (px > sx0 - 8 && px < sx1 + 8 && py > sy0 - 8 && py < sy1 + 8) {
+        drag.current = { type: "stair", side: sgd.side, startPx: px, startPy: py, startPos: project.stairs.pos || 0, sw: sgd.sw };
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+        return;
+      }
+    }
     if (px > X(deck.offset - deck.width / 2) - 12 && px < X(deck.offset + deck.width / 2) + 12 &&
         py > Y(yDeckBack) - 6 && py < Y(yDeckFront) + 6) {
       drag.current = { type: "deck", startPx: px, startOffset: deck.offset };
@@ -789,12 +832,26 @@ function Plan2D({ project, set }) {
     const r = svgRef.current.getBoundingClientRect();
     const scale = r.width / W;
     const px = (e.clientX - r.left) / scale;
+    const py = (e.clientY - r.top) / scale;
     const dm = (px - drag.current.startPx) / s;
     if (drag.current.type === "opening") {
       const lim = Math.max(0, house.width / 2 - drag.current.w / 2);
       const nx = clamp(Math.round((drag.current.startX + dm) * 20) / 20, -lim, lim);
       const id = drag.current.id;
       set((p) => ({ ...p, house: { ...p.house, openings: (p.house.openings || []).map((o) => (o.id === id ? { ...o, x: nx } : o)) } }));
+      return;
+    }
+    if (drag.current.type === "stair") {
+      const dmy = (py - drag.current.startPy) / s;
+      let pos;
+      if (drag.current.side === "front") {
+        const lim = Math.max(0, deck.width / 2 - drag.current.sw / 2);
+        pos = clamp(Math.round((drag.current.startPos + dm) * 20) / 20, -lim, lim);
+      } else {
+        const lo = drag.current.sw / 2 - deck.depth / 2, hi = deck.depth - drag.current.sw / 2 - deck.depth / 2;
+        pos = clamp(Math.round((drag.current.startPos + dmy) * 20) / 20, lo, hi);
+      }
+      set((p) => ({ ...p, stairs: { ...p.stairs, pos } }));
       return;
     }
     const lim = house.width / 2 + deck.width / 2;
@@ -811,7 +868,7 @@ function Plan2D({ project, set }) {
       <div style={{ width: "min(100%, 980px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, color: T.dim, fontSize: 13 }}>
           <Pencil size={15} style={{ color: T.wood }} />
-          Vy uppifrån · 1 ruta = 1 m · dra altanen i sidled för att placera den
+          Vy uppifrån · 1 ruta = 1 m · dra altan, trappa och fönster/dörrar direkt i vyn
         </div>
         <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", background: "#0b1016", borderRadius: 14, border: `1px solid ${T.line}`, touchAction: "none" }}
           onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}>
@@ -848,7 +905,7 @@ function Plan2D({ project, set }) {
             if (xm >= deck.offset + deck.width / 2) return null;
             return <line key={"pl" + i} x1={X(xm)} y1={Y(yDeckBack)} x2={X(xm)} y2={Y(yDeckFront)} stroke="rgba(201,138,60,0.35)" strokeWidth="1" />;
           })}
-          <text x={X(deck.offset)} y={Y((yDeckBack + yDeckFront) / 2)} fill={T.wood} fontSize="13" fontFamily={FONT} textAnchor="middle" fontWeight="600">ALTAN</text>
+          <text x={X(deck.offset)} y={Y(yDeckBack + (yDeckFront - yDeckBack) * 0.3)} fill={T.wood} fontSize="13" fontFamily={FONT} textAnchor="middle" fontWeight="600">ALTAN</text>
 
           {/* räcke (streckad indragen linje) med öppning vid trappa */}
           {project.railing.on && (() => {
@@ -888,6 +945,27 @@ function Plan2D({ project, set }) {
             }
             return <g>{parts}</g>;
           })()}
+          {/* Draghandtag (visar vad som kan flyttas) */}
+          {(() => {
+            const H2 = (cx, cy, color) => (
+              <g pointerEvents="none">
+                <circle cx={cx} cy={cy} r={13} fill="rgba(10,16,22,0.72)" stroke={color} strokeWidth="1.5" />
+                <line x1={cx - 6.5} y1={cy} x2={cx + 6.5} y2={cy} stroke={color} strokeWidth="1.4" strokeLinecap="round" />
+                <line x1={cx} y1={cy - 6.5} x2={cx} y2={cy + 6.5} stroke={color} strokeWidth="1.4" strokeLinecap="round" />
+                <path d={`M${cx - 6.5} ${cy}l3 -2.6M${cx - 6.5} ${cy}l3 2.6M${cx + 6.5} ${cy}l-3 -2.6M${cx + 6.5} ${cy}l-3 2.6M${cx} ${cy - 6.5}l-2.6 3M${cx} ${cy - 6.5}l2.6 3M${cx} ${cy + 6.5}l-2.6 -3M${cx} ${cy + 6.5}l2.6 -3`} stroke={color} strokeWidth="1.2" fill="none" strokeLinecap="round" />
+              </g>
+            );
+            const items = [<g key="deck">{H2(X(deck.offset), Y((yDeckBack + yDeckFront) / 2), T.wood)}</g>];
+            const sg = stairGeom(project);
+            if (sg.on) {
+              let hx, hy;
+              if (sg.side === "front") { hx = X(sg.cx); hy = Y(yDeckFront + sg.proj / 2); }
+              else { const dir = sg.side === "left" ? -1 : 1; const edge = sg.side === "left" ? deck.offset - deck.width / 2 : deck.offset + deck.width / 2; hx = X(edge + dir * sg.proj / 2); hy = Y(yDeckBack + sg.cz); }
+              items.push(<g key="stair">{H2(hx, hy, T.cyan)}</g>);
+            }
+            return <g>{items}</g>;
+          })()}
+
           {/* Fönster & altandörrar på framsidan (dragbara i sidled) */}
           {(house.openings || []).map((o) => {
             const isDoor = o.kind === "door";
@@ -1341,6 +1419,18 @@ function View3D({ project }) {
         xs.forEach((px) => { if (frontTopY > 0.2) addBox(0.12, frontTopY, 0.12, px, frontTopY / 2, deck.depth - 0.08, mat.post); });
         if (deck.hasRoof && deck.roofAttach === "free") {
           xs.forEach((px) => addBox(0.12, backTopY, 0.12, px, backTopY / 2, 0.08, mat.post));
+        }
+        // Stolpar på kortsidorna (i linje med räckets sidostolpar)
+        if (deck.sidePosts) {
+          const lo = 0.08, hi = deck.depth - 0.08, span = hi - lo;
+          const nz = Math.max(1, Math.round(span / 1.6));
+          const zs = [];
+          for (let i = 1; i < nz; i++) zs.push(lo + (span * i) / nz); // mellanlägen (hörn täcks av fram/bak-stolpar)
+          const edges = [deck.offset - deck.width / 2 + 0.08, deck.offset + deck.width / 2 - 0.08];
+          edges.forEach((ex) => zs.forEach((z) => {
+            const topY = deck.hasRoof ? roofUnderAt(z) : deckTop;
+            if (topY > 0.2) addBox(0.12, topY, 0.12, ex, topY / 2, z, mat.post);
+          }));
         }
       }
 
