@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.12 · kortsidesstolpar, dragbar trappa, +/− fält";
+const APP_VERSION = "v1.13 · justerbart antal kortsidesstolpar";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -179,7 +179,7 @@ const DEFAULT_PROJECT = {
     openings: [], // fönster & altandörrar på framsidan
   },
   deck: {
-    width: 8, depth: 4, height: 0.4, offset: 0, posts: 3, sidePosts: false,
+    width: 8, depth: 4, height: 0.4, offset: 0, posts: 3, sidePosts: false, sidePostsCount: 2,
     hasRoof: true, roofAttach: "attached", // attached | free
   },
   railing: { on: true, height: 1.0, type: "vertical", back: false, rows: 4, vcount: 40 }, // rows=liggande, vcount=stående
@@ -570,8 +570,16 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
             <Switch on={!!project.deck.sidePosts} onChange={(v) => setDeck("sidePosts", v)} />
           </div>
           <div style={{ fontSize: 11.5, color: T.dim, marginBottom: 6 }}>
-            Sätter stolpar även längs altanens kortsidor, i linje med räckets sidostolpar.
+            Sätter stolpar även längs altanens kortsidor, jämnt fördelade mellan hörnen.
           </div>
+          {project.deck.sidePosts && (
+            <>
+              <NumberField label="Antal stolpar per kortsida" value={project.deck.sidePostsCount || 2} onChange={(v) => setDeck("sidePostsCount", Math.round(v))} unit="st" step={1} min={1} max={6} />
+              <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 10px" }}>
+                Jämnt fördelade · c/c ≈ {m(project.deck.depth / ((Math.round(project.deck.sidePostsCount || 2)) + 1))} mellan stolparna
+              </div>
+            </>
+          )}
 
           <div style={{ margin: "14px 0 6px", fontSize: 12.5, color: T.dim }}>Tak</div>
           <Toggle value={project.deck.hasRoof ? "yes" : "no"} onChange={(v) => setDeck("hasRoof", v === "yes")}
@@ -1423,9 +1431,9 @@ function View3D({ project }) {
         // Stolpar på kortsidorna (i linje med räckets sidostolpar)
         if (deck.sidePosts) {
           const lo = 0.08, hi = deck.depth - 0.08, span = hi - lo;
-          const nz = Math.max(1, Math.round(span / 1.6));
+          const n = Math.max(1, Math.round(deck.sidePostsCount || 1));
           const zs = [];
-          for (let i = 1; i < nz; i++) zs.push(lo + (span * i) / nz); // mellanlägen (hörn täcks av fram/bak-stolpar)
+          for (let i = 1; i <= n; i++) zs.push(lo + (span * i) / (n + 1)); // n jämnt fördelade lägen mellan hörnen
           const edges = [deck.offset - deck.width / 2 + 0.08, deck.offset + deck.width / 2 - 0.08];
           edges.forEach((ex) => zs.forEach((z) => {
             const topY = deck.hasRoof ? roofUnderAt(z) : deckTop;
