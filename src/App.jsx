@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.13 · justerbart antal kortsidesstolpar";
+const APP_VERSION = "v1.14 · individuella kortsidesstolpar";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -179,7 +179,7 @@ const DEFAULT_PROJECT = {
     openings: [], // fönster & altandörrar på framsidan
   },
   deck: {
-    width: 8, depth: 4, height: 0.4, offset: 0, posts: 3, sidePosts: false, sidePostsCount: 2,
+    width: 8, depth: 4, height: 0.4, offset: 0, posts: 3, sidePosts: false, sidePostPositions: [],
     hasRoof: true, roofAttach: "attached", // attached | free
   },
   railing: { on: true, height: 1.0, type: "vertical", back: false, rows: 4, vcount: 40 }, // rows=liggande, vcount=stående
@@ -418,6 +418,19 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
   });
   const updateOpening = (id, k, v) => set((p) => ({ ...p, house: { ...p.house, openings: (p.house.openings || []).map((o) => (o.id === id ? { ...o, [k]: v } : o)) } }));
   const removeOpening = (id) => set((p) => ({ ...p, house: { ...p.house, openings: (p.house.openings || []).filter((o) => o.id !== id) } }));
+  // Stolpar på kortsidorna (individuella lägen, speglas på båda sidor)
+  const sidePP = project.deck.sidePostPositions || [];
+  const addSidePost = () => set((p) => {
+    const cur = p.deck.sidePostPositions || [];
+    const z = clamp(cur.length ? (cur[cur.length - 1] + 0.8) : p.deck.depth / 2, 0.1, Math.max(0.1, p.deck.depth - 0.1));
+    return { ...p, deck: { ...p.deck, sidePostPositions: [...cur, +z.toFixed(2)] } };
+  });
+  const updateSidePost = (i, v) => set((p) => {
+    const cur = [...(p.deck.sidePostPositions || [])];
+    cur[i] = clamp(v, 0, p.deck.depth);
+    return { ...p, deck: { ...p.deck, sidePostPositions: cur } };
+  });
+  const removeSidePost = (i) => set((p) => ({ ...p, deck: { ...p.deck, sidePostPositions: (p.deck.sidePostPositions || []).filter((_, j) => j !== i) } }));
   // Flytta altanen i sidled och låt nischen följa med samma steg
   const moveDeckOffset = (v) => set((p) => {
     const dx = v - p.deck.offset;
@@ -567,18 +580,36 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
           )}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
             <span style={{ fontSize: 13.5 }}>Stolpar på kortsidorna</span>
-            <Switch on={!!project.deck.sidePosts} onChange={(v) => setDeck("sidePosts", v)} />
+            <Switch on={!!project.deck.sidePosts} onChange={(v) => set((p) => {
+              const cur = p.deck.sidePostPositions || [];
+              const init = v && cur.length === 0 ? [+(p.deck.depth / 3).toFixed(2), +(2 * p.deck.depth / 3).toFixed(2)] : cur;
+              return { ...p, deck: { ...p.deck, sidePosts: v, sidePostPositions: init } };
+            })} />
           </div>
-          <div style={{ fontSize: 11.5, color: T.dim, marginBottom: 6 }}>
-            Sätter stolpar även längs altanens kortsidor, jämnt fördelade mellan hörnen.
+          <div style={{ fontSize: 11.5, color: T.dim, marginBottom: 10 }}>
+            Stolparna placeras på båda kortsidorna. Justera varje stolpes läge med − / +.
           </div>
           {project.deck.sidePosts && (
-            <>
-              <NumberField label="Antal stolpar per kortsida" value={project.deck.sidePostsCount || 2} onChange={(v) => setDeck("sidePostsCount", Math.round(v))} unit="st" step={1} min={1} max={6} />
-              <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 10px" }}>
-                Jämnt fördelade · c/c ≈ {m(project.deck.depth / ((Math.round(project.deck.sidePostsCount || 2)) + 1))} mellan stolparna
-              </div>
-            </>
+            <div style={{ marginBottom: 6 }}>
+              {sidePP.length === 0 ? (
+                <div style={{ fontSize: 13, color: T.dim, marginBottom: 10 }}>Inga stolpar än – lägg till nedan.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 10, marginBottom: 10 }}>
+                  {sidePP.map((z, i) => (
+                    <div key={i} style={{ background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 11px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>Stolpe {i + 1}</span>
+                        <button onClick={() => removeSidePost(i)} style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 12 }}>Ta bort</button>
+                      </div>
+                      <NumberField label="Avstånd från huset" value={z} onChange={(v) => updateSidePost(i, v)} min={0} max={project.deck.depth} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button onClick={addSidePost} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 9, padding: "9px", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                <Plus size={14} /> Lägg till stolpe
+              </button>
+            </div>
           )}
 
           <div style={{ margin: "14px 0 6px", fontSize: 12.5, color: T.dim }}>Tak</div>
@@ -953,6 +984,19 @@ function Plan2D({ project, set }) {
             }
             return <g>{parts}</g>;
           })()}
+          {/* Kortsidesstolpar (markörer på båda kortsidorna) */}
+          {deck.sidePosts && (deck.sidePostPositions || []).map((z, i) => {
+            const yy = Y(yDeckBack + clamp(z, 0, deck.depth));
+            const xl = X(deck.offset - deck.width / 2);
+            const xr = X(deck.offset + deck.width / 2);
+            return (
+              <g key={"sp" + i}>
+                <rect x={xl - 3.5} y={yy - 3.5} width={7} height={7} fill={T.wood} stroke="#1a1206" strokeWidth="0.8" />
+                <rect x={xr - 3.5} y={yy - 3.5} width={7} height={7} fill={T.wood} stroke="#1a1206" strokeWidth="0.8" />
+              </g>
+            );
+          })}
+
           {/* Draghandtag (visar vad som kan flyttas) */}
           {(() => {
             const H2 = (cx, cy, color) => (
@@ -1430,10 +1474,7 @@ function View3D({ project }) {
         }
         // Stolpar på kortsidorna (i linje med räckets sidostolpar)
         if (deck.sidePosts) {
-          const lo = 0.08, hi = deck.depth - 0.08, span = hi - lo;
-          const n = Math.max(1, Math.round(deck.sidePostsCount || 1));
-          const zs = [];
-          for (let i = 1; i <= n; i++) zs.push(lo + (span * i) / (n + 1)); // n jämnt fördelade lägen mellan hörnen
+          const zs = (deck.sidePostPositions || []).map((z) => clamp(z, 0.08, deck.depth - 0.08));
           const edges = [deck.offset - deck.width / 2 + 0.08, deck.offset + deck.width / 2 - 0.08];
           edges.forEach((ex) => zs.forEach((z) => {
             const topY = deck.hasRoof ? roofUnderAt(z) : deckTop;
