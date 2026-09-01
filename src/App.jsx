@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.14 · individuella kortsidesstolpar";
+const APP_VERSION = "v1.15 · fixad panelbredd (+/− syns)";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -336,22 +336,22 @@ function NumberField({ label, value, onChange, unit = "m", step = 0.1, min = 0, 
     onChange(rounded);
   };
   const btn = {
-    width: 40, flexShrink: 0, display: "grid", placeItems: "center", cursor: "pointer",
-    background: "#10161e", border: "none", color: T.text, fontSize: 20, lineHeight: 1, userSelect: "none", WebkitUserSelect: "none",
+    width: 34, flexShrink: 0, display: "grid", placeItems: "center", cursor: "pointer",
+    background: "#10161e", border: "none", color: T.text, fontSize: 19, lineHeight: 1, userSelect: "none", WebkitUserSelect: "none", padding: 0,
   };
   return (
     <label style={{ display: "block", marginBottom: 12 }}>
       <span style={{ fontSize: 12.5, color: T.dim, display: "block", marginBottom: 5 }}>{label}</span>
-      <div style={{ display: "flex", alignItems: "stretch", background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 9, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "stretch", width: "100%", maxWidth: "100%", boxSizing: "border-box", background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 9, overflow: "hidden" }}>
         <button type="button" onClick={() => bump(-1)} aria-label="Minska" style={{ ...btn, borderRight: `1px solid ${T.line}` }}>−</button>
         <input
           value={txt}
           inputMode="decimal"
           onChange={(e) => handle(e.target.value)}
           onBlur={() => setTxt(num(value))}
-          style={{ flex: 1, minWidth: 0, padding: "9px 6px", background: "transparent", border: "none", color: T.text, fontSize: 14.5, outline: "none", textAlign: "center" }}
+          style={{ flex: "1 1 0", width: 0, minWidth: 0, padding: "9px 4px", background: "transparent", border: "none", color: T.text, fontSize: 14.5, outline: "none", textAlign: "center", boxSizing: "border-box" }}
         />
-        <span style={{ display: "grid", placeItems: "center", padding: "0 9px", color: T.dim, fontSize: 12.5, background: "#10161e", borderLeft: `1px solid ${T.line}` }}>{unit}</span>
+        {unit ? <span style={{ display: "grid", placeItems: "center", flexShrink: 0, padding: "0 7px", color: T.dim, fontSize: 12, background: "#10161e", borderLeft: `1px solid ${T.line}` }}>{unit}</span> : null}
         <button type="button" onClick={() => bump(1)} aria-label="Öka" style={{ ...btn, borderLeft: `1px solid ${T.line}` }}>+</button>
       </div>
     </label>
@@ -369,7 +369,7 @@ function Section({ title, Icon, accent, open, onToggle, children }) {
         {title}
         <ChevronRight size={16} style={{ marginLeft: "auto", color: T.dim, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
       </button>
-      {open && <div style={{ padding: "2px 16px 16px" }}>{children}</div>}
+      {open && <div style={{ padding: "2px 13px 16px", boxSizing: "border-box", overflowWrap: "anywhere" }}>{children}</div>}
     </div>
   );
 }
@@ -475,7 +475,7 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
         )}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", boxSizing: "border-box" }}>
         {/* HUS */}
         <Section title="Hus" Icon={Home} accent={T.sky} open={openSection === "house"} onToggle={() => toggle("house")}>
           <NumberField label="Husets bredd (fasadlängd)" value={project.house.width} onChange={(v) => setHouse("width", v)} min={1} max={60} />
@@ -544,8 +544,8 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
                 return (
                   <div key={o.id} style={{ background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 11, padding: "11px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 650, color: isDoor ? T.wood : T.sky }}>{label}</span>
-                      <button onClick={() => removeOpening(o.id)} style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 12 }}>Ta bort</button>
+                      <span style={{ fontSize: 13.5, fontWeight: 650, color: isDoor ? T.wood : T.sky, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, marginRight: 8 }}>{label}</span>
+                      <button onClick={() => removeOpening(o.id)} style={{ flexShrink: 0, background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Ta bort</button>
                     </div>
                     <NumberField label="Bredd" value={o.w} onChange={(v) => updateOpening(o.id, "w", v)} min={0.3} max={Math.max(0.5, project.house.width)} />
                     <NumberField label="Höjd" value={o.h} onChange={(v) => updateOpening(o.id, "h", v)} min={0.3} max={Math.max(0.5, project.house.height)} />
@@ -598,8 +598,8 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
                   {sidePP.map((z, i) => (
                     <div key={i} style={{ background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 11px" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>Stolpe {i + 1}</span>
-                        <button onClick={() => removeSidePost(i)} style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 12 }}>Ta bort</button>
+                        <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, marginRight: 8 }}>Stolpe {i + 1}</span>
+                        <button onClick={() => removeSidePost(i)} style={{ flexShrink: 0, background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "4px 9px", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Ta bort</button>
                       </div>
                       <NumberField label="Avstånd från huset" value={z} onChange={(v) => updateSidePost(i, v)} min={0} max={project.deck.depth} />
                     </div>
@@ -2405,7 +2405,7 @@ export default function App() {
           {/* Mobil: utfällbar sidopanel */}
           {isMobile && sidebarOpen && (
             <div onClick={() => setSidebarOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 60, background: "rgba(5,8,12,0.55)" }}>
-              <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "min(320px, 86%)", boxShadow: "2px 0 24px rgba(0,0,0,0.45)" }}>
+              <div onClick={(e) => e.stopPropagation()} style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "min(360px, 92%)", boxShadow: "2px 0 24px rgba(0,0,0,0.45)" }}>
                 <Sidebar project={project} set={setProject} openSection={openSection} setOpenSection={setOpenSection} width="100%" onClose={() => setSidebarOpen(false)} onSave={saveProject} onOpenProjects={() => setProjectsOpen(true)} />
               </div>
             </div>
