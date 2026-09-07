@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.15 · fixad panelbredd (+/− syns)";
+const APP_VERSION = "v1.16 · materiallista i PDF";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -2114,6 +2114,33 @@ function tableSvgBlock(title, rows, width) {
   return { str: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}">${b}</svg>`, w: width, h };
 }
 
+// Fyrkolumns materialtabell för PDF (Del · Dimension · Antal · Detalj)
+function bomTableSvgBlock(rows, width) {
+  const titleH = 32, headH = 22, rowH = 24, noteH = 24, pad = 14;
+  const cx = { del: pad, dim: Math.round(width * 0.27), antal: Math.round(width * 0.47), detalj: Math.round(width * 0.57) };
+  const bodyBottom = titleH + headH + rows.length * rowH;
+  const h = bodyBottom + noteH + 2;
+  let b = `<rect x="0" y="0" width="${width}" height="${h}" fill="#fff" stroke="#d4d9df"/>`;
+  b += `<rect x="0" y="0" width="${width}" height="${titleH}" fill="#f7f8fa"/>`;
+  b += `<text x="${pad}" y="${titleH - 11}" font-family="sans-serif" font-size="13" font-weight="700" fill="#0f172a">MATERIALLISTA (UPPSKATTAD)</text>`;
+  b += `<line x1="0" y1="${titleH}" x2="${width}" y2="${titleH}" stroke="#e6e9ed"/>`;
+  const hy = titleH + headH - 7;
+  const heads = [["DEL", cx.del], ["DIMENSION", cx.dim], ["ANTAL", cx.antal], ["DETALJ", cx.detalj]];
+  heads.forEach(([t, x]) => { b += `<text x="${x}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">${t}</text>`; });
+  b += `<line x1="0" y1="${titleH + headH}" x2="${width}" y2="${titleH + headH}" stroke="#e6e9ed"/>`;
+  rows.forEach((r, i) => {
+    const y = titleH + headH + i * rowH, ty = y + 16;
+    b += `<text x="${cx.del}" y="${ty}" font-family="sans-serif" font-size="12" font-weight="600" fill="#0f172a">${xmlEsc(r[0])}</text>`;
+    b += `<text x="${cx.dim}" y="${ty}" font-family="sans-serif" font-size="12" fill="#475569">${xmlEsc(r[1])}</text>`;
+    b += `<text x="${cx.antal}" y="${ty}" font-family="sans-serif" font-size="12" font-weight="600" fill="#0f172a">${xmlEsc(r[2])}</text>`;
+    b += `<text x="${cx.detalj}" y="${ty}" font-family="sans-serif" font-size="11" fill="#64748b">${xmlEsc(r[3])}</text>`;
+    if (i < rows.length - 1) b += `<line x1="0" y1="${y + rowH}" x2="${width}" y2="${y + rowH}" stroke="#eef1f4"/>`;
+  });
+  b += `<line x1="0" y1="${bodyBottom}" x2="${width}" y2="${bodyBottom}" stroke="#e6e9ed"/>`;
+  b += `<text x="${pad}" y="${bodyBottom + 15}" font-family="sans-serif" font-size="10" fill="#94a3b8">Uppskattade mängder ur takets mått och cc-avstånd. Kontrollera bärförmåga och snölast med konstruktör eller virkeshandel.</text>`;
+  return { str: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}">${b}</svg>`, w: width, h };
+}
+
 function domSvgBlock(svgEl) {
   const vb = (svgEl.getAttribute("viewBox") || "0 0 700 460").split(/\s+/).map(Number);
   const w = vb[2] || 700, h = vb[3] || 460;
@@ -2190,9 +2217,7 @@ async function buildPdfUrl(project) {
   if (!drawings.length) throw new Error("Hittade inga ritningar att exportera.");
   const title = titleSvgBlock(project);
   const measure = tableSvgBlock("MÅTTSAMMANSTÄLLNING", measureRows(project), 760);
-  const bom = project.deck.hasRoof
-    ? tableSvgBlock("MATERIALLISTA (UPPSKATTAD)", bomRows(project).map((r) => [r[0], `${r[2]} · ${r[1]}`]), 760)
-    : null;
+  const bom = project.deck.hasRoof ? bomTableSvgBlock(bomRows(project), 760) : null;
 
   const pagesBlocks = [];
   if (drawings[0]) pagesBlocks.push([title, drawings[0]]);
