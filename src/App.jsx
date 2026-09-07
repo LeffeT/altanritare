@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.16 · materiallista i PDF";
+const APP_VERSION = "v1.17 · ströläkt i materiallistan";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -129,11 +129,14 @@ function computeBom(p) {
   const rafterOrder = Math.ceil((slopeLen + 0.1) * 10) / 10;
   const battenRows = Math.max(2, Math.ceil((slopeLen * 1000) / Math.max(100, f.battenCC)) + 1);
   const battenLM = battenRows * p.roof.width;
+  const stroCC = f.stroCC || 600;
+  const stroCols = Math.max(2, Math.ceil((p.roof.width * 1000) / Math.max(100, stroCC)) + 1);
+  const stroLM = stroCols * rafterOrder;
   const front = Math.max(1, Math.round(p.deck.posts));
   const back = p.deck.roofAttach === "free" ? front : 0;
   const posts = front + back;
   const roofArea = p.roof.width * slopeLen;
-  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, angleDeg: d.angleDeg };
+  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, angleDeg: d.angleDeg };
 }
 
 function bomRows(p) {
@@ -143,6 +146,7 @@ function bomRows(p) {
     ["Takstolar / reglar", f.rafterDim, `${b.rafters} st`, `cc ${f.rafterCC} mm · ${b.fack} fack · längd ca ${num(b.rafterOrder)} m`],
     ["Bärlinor", f.beamDim, `${b.beams} st`, `längd ${num(b.beamLen)} m (fram + bak)`],
     ["Stolpar", f.postDim, `${b.posts} st`, b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`],
+    ["Ströläkt", f.stroDim || "25×48", `${b.stroCols} st`, `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} löpmeter`],
     ["Bärläkt", f.battenDim, `${b.battenRows} rader`, `cc ${f.battenCC} mm · ca ${num(b.battenLM)} löpmeter`],
     ["Takyta", "TP20 plåt", `${num(b.roofArea)} m²`, `taklutning ca ${num(b.angleDeg)}°`],
   ];
@@ -188,6 +192,7 @@ const DEFAULT_PROJECT = {
   // Virke/stomme för materiallistan
   frame: {
     rafterDim: "45×220", rafterCC: 600,
+    stroDim: "25×48", stroCC: 600,
     battenDim: "45×70", battenCC: 600,
     beamDim: "56×225 limträ", postDim: "95×95",
   },
@@ -1992,6 +1997,7 @@ function Select({ label, value, onChange, options }) {
 }
 
 const RAFTER_DIMS = ["45×170", "45×195", "45×220", "45×245", "45×295"];
+const STRO_DIMS = ["25×25", "25×48", "34×70", "45×45"];
 const BATTEN_DIMS = ["25×48", "34×70", "45×45", "45×70"];
 const BEAM_DIMS = ["45×220", "56×225 limträ", "90×225 limträ", "115×225 limträ"];
 const POST_DIMS = ["95×95", "120×120", "90×90 limträ", "115×115 limträ"];
@@ -2012,6 +2018,8 @@ function MaterialView({ project, set }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0 14px" }}>
             <Select label="Takstolar / reglar" value={f.rafterDim} onChange={(v) => setFrame("rafterDim", v)} options={RAFTER_DIMS} />
             <NumberField label="Takstolar cc" unit="mm" value={f.rafterCC} onChange={(v) => setFrame("rafterCC", Math.round(v))} step={50} min={200} max={1200} />
+            <Select label="Ströläkt" value={f.stroDim || "25×48"} onChange={(v) => setFrame("stroDim", v)} options={STRO_DIMS} />
+            <NumberField label="Ströläkt cc" unit="mm" value={f.stroCC || 600} onChange={(v) => setFrame("stroCC", Math.round(v))} step={50} min={200} max={1200} />
             <Select label="Bärläkt" value={f.battenDim} onChange={(v) => setFrame("battenDim", v)} options={BATTEN_DIMS} />
             <NumberField label="Bärläkt cc" unit="mm" value={f.battenCC} onChange={(v) => setFrame("battenCC", Math.round(v))} step={50} min={150} max={1500} />
             <Select label="Bärlinor" value={f.beamDim} onChange={(v) => setFrame("beamDim", v)} options={BEAM_DIMS} />
