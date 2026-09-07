@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.18 · läktplan + sidoutskjut";
+const APP_VERSION = "v1.19 · tydligare läktplan med reglar";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -2077,13 +2077,13 @@ function RoofFramingDrawing({ project, width = 720 }) {
   return (
     <Paper title="LÄKTPLAN (takstomme uppifrån)" scaleNote={`${num(roofW)} × ${num(R)} m`} width={width} height={H}>
       <rect x="0" y="0" width={width} height={H} fill="#fff" />
-      <rect x={X(-roofW / 2)} y={Y(0)} width={roofW * s} height={R * s} fill="#f7f8fa" stroke="#334155" strokeWidth="1.4" />
+      <rect x={X(-roofW / 2)} y={Y(0)} width={roofW * s} height={R * s} fill="#f7f8fa" stroke="#334155" strokeWidth="1.8" />
       {os > 0.001 && [-roof.width / 2, roof.width / 2].map((x, i) => (
-        <line key={"g" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#94a3b8" strokeWidth="1" strokeDasharray="5 4" />
+        <line key={"g" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#94a3b8" strokeWidth="1.4" strokeDasharray="6 4" />
       ))}
-      {colXs(nR).map((x, i) => (<line key={"r" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#9aa7b4" strokeWidth="2" strokeDasharray="4 3" />))}
-      {colXs(nS).map((x, i) => (<line key={"s" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#b07b2f" strokeWidth="1.6" />))}
-      {battenYs.map((y, i) => (<line key={"b" + i} x1={X(-roofW / 2)} y1={Y(y)} x2={X(roofW / 2)} y2={Y(y)} stroke="#0f766e" strokeWidth="1.4" />))}
+      {colXs(nR).map((x, i) => (<line key={"r" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#334155" strokeWidth="4" strokeLinecap="round" />))}
+      {colXs(nS).map((x, i) => (<line key={"s" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#d68a2a" strokeWidth="2.2" />))}
+      {battenYs.map((y, i) => (<line key={"b" + i} x1={X(-roofW / 2)} y1={Y(y)} x2={X(roofW / 2)} y2={Y(y)} stroke="#0f766e" strokeWidth="2.8" />))}
       <text x={X(0)} y={Y(0) - 8} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">MOT HUS</text>
       <text x={X(0)} y={Y(R) + 15} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">FRAMKANT (takfot)</text>
       {os > 0.001 && (
@@ -2095,15 +2095,15 @@ function RoofFramingDrawing({ project, width = 720 }) {
       {(() => {
         const ly = H - 20;
         const items = [
-          ["Reglar", f.rafterCC || 600, "#9aa7b4", "4 3"],
-          ["Ströläkt", f.stroCC || 600, "#b07b2f", "0"],
-          ["Bärläkt", f.battenCC || 600, "#0f766e", "0"],
+          ["Reglar", f.rafterCC || 600, "#334155", "0", 4],
+          ["Ströläkt", f.stroCC || 600, "#d68a2a", "0", 3],
+          ["Bärläkt", f.battenCC || 600, "#0f766e", "0", 3.2],
         ];
         const xpos = [24, 264, 504];
-        return items.map(([lab, cc, col, dash], i) => (
+        return items.map(([lab, cc, col, dash, wd], i) => (
           <g key={i}>
-            <line x1={xpos[i]} y1={ly} x2={xpos[i] + 26} y2={ly} stroke={col} strokeWidth="2.4" strokeDasharray={dash} />
-            <text x={xpos[i] + 32} y={ly + 4} fontSize="11" fontFamily={FONT} fill="#475569">{lab} cc {cc} mm</text>
+            <line x1={xpos[i]} y1={ly} x2={xpos[i] + 28} y2={ly} stroke={col} strokeWidth={wd} strokeDasharray={dash} strokeLinecap="round" />
+            <text x={xpos[i] + 34} y={ly + 4} fontSize="11.5" fontFamily={FONT} fill="#475569">{lab} cc {cc} mm</text>
           </g>
         ));
       })()}
