@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.17 · ströläkt i materiallistan";
+const APP_VERSION = "v1.18 · läktplan + sidoutskjut";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -128,15 +128,17 @@ function computeBom(p) {
   const slopeLen = edgeRun / Math.cos(d.angleRad);
   const rafterOrder = Math.ceil((slopeLen + 0.1) * 10) / 10;
   const battenRows = Math.max(2, Math.ceil((slopeLen * 1000) / Math.max(100, f.battenCC)) + 1);
-  const battenLM = battenRows * p.roof.width;
+  const os = p.roof.overhangSide || 0;
+  const roofW = p.roof.width + 2 * os;
+  const battenLM = battenRows * roofW;
   const stroCC = f.stroCC || 600;
   const stroCols = Math.max(2, Math.ceil((p.roof.width * 1000) / Math.max(100, stroCC)) + 1);
   const stroLM = stroCols * rafterOrder;
   const front = Math.max(1, Math.round(p.deck.posts));
   const back = p.deck.roofAttach === "free" ? front : 0;
   const posts = front + back;
-  const roofArea = p.roof.width * slopeLen;
-  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, angleDeg: d.angleDeg };
+  const roofArea = roofW * slopeLen;
+  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, angleDeg: d.angleDeg };
 }
 
 function bomRows(p) {
@@ -147,7 +149,7 @@ function bomRows(p) {
     ["Bärlinor", f.beamDim, `${b.beams} st`, `längd ${num(b.beamLen)} m (fram + bak)`],
     ["Stolpar", f.postDim, `${b.posts} st`, b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`],
     ["Ströläkt", f.stroDim || "25×48", `${b.stroCols} st`, `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} löpmeter`],
-    ["Bärläkt", f.battenDim, `${b.battenRows} rader`, `cc ${f.battenCC} mm · ca ${num(b.battenLM)} löpmeter`],
+    ["Bärläkt", f.battenDim, `${b.battenRows} rader`, `cc ${f.battenCC} mm · ca ${num(b.battenLM)} löpmeter (takbredd ${num(b.roofW)} m inkl. sidoutskjut)`],
     ["Takyta", "TP20 plåt", `${num(b.roofArea)} m²`, `taklutning ca ${num(b.angleDeg)}°`],
   ];
 }
@@ -188,7 +190,7 @@ const DEFAULT_PROJECT = {
   },
   railing: { on: true, height: 1.0, type: "vertical", back: false, rows: 4, vcount: 40 }, // rows=liggande, vcount=stående
   stairs: { on: false, side: "right", width: 1.2, pos: 0, steps: 3 }, // side: front | left | right
-  roof: { width: 8, depth: 4, heightAtWall: 2.6, slope: 15, overhangFront: 0.3 },
+  roof: { width: 8, depth: 4, heightAtWall: 2.6, slope: 15, overhangFront: 0.3, overhangSide: 0.3 },
   // Virke/stomme för materiallistan
   frame: {
     rafterDim: "45×220", rafterCC: 600,
@@ -727,6 +729,7 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
             <NumberField label="Höjd vid husvägg (till takstolens ovankant)" value={project.roof.heightAtWall} onChange={(v) => setRoof("heightAtWall", v)} min={1.5} max={8} />
             <NumberField label="Lutning" unit="cm/m" value={project.roof.slope} onChange={(v) => setRoof("slope", v)} step={1} min={0} max={120} />
             <NumberField label="Takutsprång fram (utöver stolplinjen)" value={project.roof.overhangFront} onChange={(v) => setRoof("overhangFront", v)} min={0} max={2} />
+            <NumberField label="Takutsprång sida (per sida)" value={project.roof.overhangSide ?? 0.3} onChange={(v) => setRoof("overhangSide", v)} min={0} max={1.5} />
 
             <div style={{ marginTop: 10, padding: "12px 13px", borderRadius: 11, background: lowHeadroom ? "#2a1c10" : "#10201d", border: `1px solid ${lowHeadroom ? "#5a3a1c" : "#1f4038"}` }}>
               <div style={{ fontSize: 12, color: T.dim, marginBottom: 3 }}>Ståhöjd vid framkant (under takstol)</div>
@@ -1428,12 +1431,14 @@ function View3D({ project }) {
       if (deck.hasRoof) {
         const frame = p.frame || {};
         const R = roof.depth + (roof.overhangFront || 0);
+        const os = roof.overhangSide || 0;
+        const roofW = roof.width + 2 * os;          // total takbredd inkl. sidoutskjut
         const slopeLen = Math.sqrt(R * R + dv.edgeDrop * dv.edgeDrop);
         const planeMidY = deckTop + roof.heightAtWall - dv.edgeDrop / 2; // ovankant takstol (mitt)
         const planeYat = (z) => deckTop + roof.heightAtWall - (roof.slope / 100) * z;
         const rDepth = dv.rafterDepth || 0.22;
 
-        // Takstolar (45 mm breda, på högkant längs fallet)
+        // Takstolar (45 mm breda, på högkant längs fallet) – på strukturbredden
         const rCC = Math.max(0.1, (frame.rafterCC || 600) / 1000);
         const nR = Math.max(2, Math.floor(roof.width / rCC) + 1);
         for (let i = 0; i < nR; i++) {
@@ -1441,16 +1446,27 @@ function View3D({ project }) {
           addBox(0.045, rDepth, slopeLen, px, planeMidY - rDepth / 2, R / 2, mat.rafter, dv.angleRad);
         }
 
-        // Bärläkt (tvärs takstolarna, ovanpå)
+        // Ströläkt (längs fallet, ovanpå takstolarna)
+        const sCC = Math.max(0.1, (frame.stroCC || 600) / 1000);
+        const sp = String(frame.stroDim || "25×48").split("×");
+        const sThick = (parseFloat(sp[0]) || 25) / 1000;
+        const sWide = (parseFloat(sp[1]) || 48) / 1000;
+        const nS = Math.max(2, Math.floor(roof.width / sCC) + 1);
+        for (let i = 0; i < nS; i++) {
+          const px = deck.offset - roof.width / 2 + (i / (nS - 1)) * roof.width;
+          addBox(sWide, sThick, slopeLen, px, planeMidY + sThick / 2 + 0.006, R / 2, mat.batten, dv.angleRad);
+        }
+
+        // Bärläkt (tvärs takstolarna, ovanpå ströläkten) – hela takbredden inkl. sidoutskjut
         const bCC = Math.max(0.1, (frame.battenCC || 600) / 1000);
         const nB = Math.max(2, Math.floor(slopeLen / bCC) + 1);
         for (let k = 0; k < nB; k++) {
           const z = (k / (nB - 1)) * R;
-          addBox(roof.width, 0.045, 0.07, deck.offset, planeYat(z) + 0.035, z, mat.batten);
+          addBox(roofW, 0.045, 0.07, deck.offset, planeYat(z) + 0.055, z, mat.batten);
         }
 
-        // Takplåt överst
-        addBox(roof.width, 0.03, slopeLen, deck.offset, planeMidY + 0.1, R / 2, mat.roof, dv.angleRad);
+        // Takplåt överst – hela takbredden inkl. sidoutskjut
+        addBox(roofW, 0.03, slopeLen, deck.offset, planeMidY + 0.12, R / 2, mat.roof, dv.angleRad);
 
         // Bärlinor (fram vid stolplinjen + bak vid vägg) under takstolarna
         const bp = String(frame.beamDim || "56×225").split("×");
@@ -2035,6 +2051,66 @@ function MaterialView({ project, set }) {
   );
 }
 
+function RoofFramingDrawing({ project, width = 720 }) {
+  const { deck, roof } = project;
+  if (!deck.hasRoof) return null;
+  const f = project.frame || {};
+  const os = roof.overhangSide || 0;
+  const roofW = roof.width + 2 * os;
+  const of = roof.overhangFront || 0;
+  const R = roof.depth + of;
+  const M = 54, H = 440;
+  const s = Math.min((width - 2 * M) / roofW, (H - 2 * M - 34) / R);
+  const X = (xm) => width / 2 + xm * s;
+  const Y = (ym) => M + ym * s;
+  const d = derive(project);
+  const slopeLen = R / Math.cos(d.angleRad || 0);
+  const rCC = Math.max(0.1, (f.rafterCC || 600) / 1000);
+  const sCC = Math.max(0.1, (f.stroCC || 600) / 1000);
+  const bCC = Math.max(0.1, (f.battenCC || 600) / 1000);
+  const nR = Math.max(2, Math.floor(roof.width / rCC) + 1);
+  const nS = Math.max(2, Math.floor(roof.width / sCC) + 1);
+  const nB = Math.max(2, Math.floor(slopeLen / bCC) + 1);
+  const colXs = (n) => Array.from({ length: n }, (_, i) => -roof.width / 2 + (i / (n - 1)) * roof.width);
+  const battenYs = Array.from({ length: nB }, (_, i) => (i / (nB - 1)) * R);
+
+  return (
+    <Paper title="LÄKTPLAN (takstomme uppifrån)" scaleNote={`${num(roofW)} × ${num(R)} m`} width={width} height={H}>
+      <rect x="0" y="0" width={width} height={H} fill="#fff" />
+      <rect x={X(-roofW / 2)} y={Y(0)} width={roofW * s} height={R * s} fill="#f7f8fa" stroke="#334155" strokeWidth="1.4" />
+      {os > 0.001 && [-roof.width / 2, roof.width / 2].map((x, i) => (
+        <line key={"g" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#94a3b8" strokeWidth="1" strokeDasharray="5 4" />
+      ))}
+      {colXs(nR).map((x, i) => (<line key={"r" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#9aa7b4" strokeWidth="2" strokeDasharray="4 3" />))}
+      {colXs(nS).map((x, i) => (<line key={"s" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#b07b2f" strokeWidth="1.6" />))}
+      {battenYs.map((y, i) => (<line key={"b" + i} x1={X(-roofW / 2)} y1={Y(y)} x2={X(roofW / 2)} y2={Y(y)} stroke="#0f766e" strokeWidth="1.4" />))}
+      <text x={X(0)} y={Y(0) - 8} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">MOT HUS</text>
+      <text x={X(0)} y={Y(R) + 15} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">FRAMKANT (takfot)</text>
+      {os > 0.001 && (
+        <g>
+          <text x={(X(-roofW / 2) + X(-roof.width / 2)) / 2} y={Y(0) - 8} fontSize="9.5" fontFamily={FONT} fill="#64748b" textAnchor="middle">{num(os)} m</text>
+          <text x={(X(roof.width / 2) + X(roofW / 2)) / 2} y={Y(0) - 8} fontSize="9.5" fontFamily={FONT} fill="#64748b" textAnchor="middle">{num(os)} m</text>
+        </g>
+      )}
+      {(() => {
+        const ly = H - 20;
+        const items = [
+          ["Reglar", f.rafterCC || 600, "#9aa7b4", "4 3"],
+          ["Ströläkt", f.stroCC || 600, "#b07b2f", "0"],
+          ["Bärläkt", f.battenCC || 600, "#0f766e", "0"],
+        ];
+        const xpos = [24, 264, 504];
+        return items.map(([lab, cc, col, dash], i) => (
+          <g key={i}>
+            <line x1={xpos[i]} y1={ly} x2={xpos[i] + 26} y2={ly} stroke={col} strokeWidth="2.4" strokeDasharray={dash} />
+            <text x={xpos[i] + 32} y={ly + 4} fontSize="11" fontFamily={FONT} fill="#475569">{lab} cc {cc} mm</text>
+          </g>
+        ));
+      })()}
+    </Paper>
+  );
+}
+
 function DrawingsView({ project }) {
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
@@ -2042,6 +2118,7 @@ function DrawingsView({ project }) {
         <PlanDrawing project={project} />
         <FacadeDrawing project={project} />
         <SectionDrawing project={project} />
+        {project.deck.hasRoof && <RoofFramingDrawing project={project} />}
         <MeasureTable project={project} />
       </div>
     </div>
@@ -2068,6 +2145,7 @@ function PrintLayout({ project }) {
         <PlanDrawing project={project} width={700} />
         <FacadeDrawing project={project} width={700} />
         <SectionDrawing project={project} width={700} />
+        {project.deck.hasRoof && <RoofFramingDrawing project={project} width={700} />}
         <MeasureTable project={project} />
         {project.deck.hasRoof && <BomTable project={project} />}
       </div>
@@ -2229,8 +2307,7 @@ async function buildPdfUrl(project) {
 
   const pagesBlocks = [];
   if (drawings[0]) pagesBlocks.push([title, drawings[0]]);
-  if (drawings[1]) pagesBlocks.push([drawings[1]]);
-  if (drawings[2]) pagesBlocks.push([drawings[2]]);
+  for (let i = 1; i < drawings.length; i++) pagesBlocks.push([drawings[i]]);
   pagesBlocks.push(bom ? [measure, bom] : [measure]);
 
   const pages = [];
