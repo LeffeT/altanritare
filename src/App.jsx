@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.23 · fler bärlina-val (45×195 c24)";
+const APP_VERSION = "v1.24 · skruv, butyl & taktäckning";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -138,7 +138,13 @@ function computeBom(p) {
   const back = p.deck.roofAttach === "free" ? front : 0;
   const posts = front + back;
   const roofArea = roofW * slopeLen;
-  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, angleDeg: d.angleDeg };
+  const covering = f.roofType || "TP20 plåt";
+  const isKlick = /klick/i.test(covering);
+  const seams = Math.max(0, Math.ceil(roofW / 1.09) - 1);          // längsgående skarvar (TP20 täckbredd ~1,09 m)
+  const farmar = Math.ceil(roofArea * (isKlick ? 6 : 9));          // infästningsskruv i bärläkt
+  const overlap = isKlick ? 0 : Math.ceil(seams * slopeLen * 3);   // sidöverlapp cc ~330 mm
+  const butyl = Math.ceil(seams * slopeLen + roofW);               // tätning skarvar + nock
+  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, covering, isKlick, seams, farmar, overlap, butyl, angleDeg: d.angleDeg };
 }
 
 function bomRows(p) {
@@ -152,7 +158,10 @@ function bomRows(p) {
     ["Takpapp", f.papptyp || "YEP 2500", `${num(b.roofArea * 1.15)} m²`, `underlagspapp på råspont · inkl. överlapp`],
     ["Ströläkt", f.stroDim || "25×48", `${b.stroCols} st`, `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} löpmeter`],
     ["Bärläkt", f.battenDim, `${b.battenRows} rader`, `cc ${f.battenCC} mm · ca ${num(b.battenLM)} löpmeter (takbredd ${num(b.roofW)} m inkl. sidoutskjut)`],
-    ["Takyta", "TP20 plåt", `${num(b.roofArea)} m²`, `taklutning ca ${num(b.angleDeg)}°`],
+    ["Takyta", b.covering, `${num(b.roofArea)} m²`, `taklutning ca ${num(b.angleDeg)}°`],
+    ["Farmarskruv", "för infästning", `${b.farmar} st`, `ca ${b.isKlick ? 6 : 9} st/m² i bärläkt`],
+    ...(b.isKlick ? [] : [["Överlappsskruv", "för sidöverlapp", `${b.overlap} st`, `${b.seams} skarv${b.seams === 1 ? "" : "ar"} · cc ca 330 mm`]]),
+    ["Butylband", "tätningsband", `ca ${b.butyl} m`, `nock + längsgående skarvar`],
   ];
 }
 
@@ -200,6 +209,7 @@ const DEFAULT_PROJECT = {
     battenDim: "45×70", battenCC: 600,
     raspontDim: "17×95", papptyp: "YEP 2500",
     beamDim: "56×225 limträ", postDim: "95×95",
+    roofType: "TP20 plåt",
   },
   // Tomtgränser som fasta linjer. pos = absolut koordinat (m):
   // front.pos = y (mätt från husbaksidan), left/right.pos = x.
@@ -2022,6 +2032,7 @@ const BEAM_DIMS = ["45×195 c24", "45×220 c24", "45×220", "56×225 limträ", "
 const POST_DIMS = ["95×95", "120×120", "90×90 limträ", "115×115 limträ"];
 const RASPONT_DIMS = ["17×95", "22×95", "23×120"];
 const PAPP_TYPES = ["YEP 2500", "YAM 2000", "YEP 3500", "Underlagspapp"];
+const ROOF_TYPES = ["TP20 plåt", "Klicktak"];
 
 function MaterialView({ project, set }) {
   const setFrame = (k, v) => set((p) => ({ ...p, frame: { ...p.frame, [k]: v } }));
@@ -2037,6 +2048,7 @@ function MaterialView({ project, set }) {
         <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, padding: 16 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 12, color: T.text }}>Virke & cc-avstånd</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0 14px" }}>
+            <Select label="Taktäckning" value={f.roofType || "TP20 plåt"} onChange={(v) => setFrame("roofType", v)} options={ROOF_TYPES} />
             <Select label="Takstolar / reglar" value={f.rafterDim} onChange={(v) => setFrame("rafterDim", v)} options={RAFTER_DIMS} />
             <NumberField label="Takstolar cc" unit="mm" value={f.rafterCC} onChange={(v) => setFrame("rafterCC", Math.round(v))} step={50} min={200} max={1200} />
             <Select label="Ströläkt" value={f.stroDim || "25×48"} onChange={(v) => setFrame("stroDim", v)} options={STRO_DIMS} />
