@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.22 · regelplan med takutsprång";
+const APP_VERSION = "v1.23 · fler bärlina-val (45×195 c24)";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -2018,7 +2018,7 @@ function Select({ label, value, onChange, options }) {
 const RAFTER_DIMS = ["45×170", "45×195", "45×220", "45×245", "45×295"];
 const STRO_DIMS = ["25×25", "25×48", "34×70", "45×45"];
 const BATTEN_DIMS = ["25×48", "34×70", "45×45", "45×70"];
-const BEAM_DIMS = ["45×220", "56×225 limträ", "90×225 limträ", "115×225 limträ"];
+const BEAM_DIMS = ["45×195 c24", "45×220 c24", "45×220", "56×225 limträ", "90×225 limträ", "115×225 limträ"];
 const POST_DIMS = ["95×95", "120×120", "90×90 limträ", "115×115 limträ"];
 const RASPONT_DIMS = ["17×95", "22×95", "23×120"];
 const PAPP_TYPES = ["YEP 2500", "YAM 2000", "YEP 3500", "Underlagspapp"];
