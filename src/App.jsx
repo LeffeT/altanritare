@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.24 · skruv, butyl & taktäckning";
+const APP_VERSION = "v1.26 · valbar takstart & bakre bärlina";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -127,42 +127,58 @@ function computeBom(p) {
   const edgeRun = p.roof.depth + (p.roof.overhangFront || 0);
   const slopeLen = edgeRun / Math.cos(d.angleRad);
   const rafterOrder = Math.ceil((slopeLen + 0.1) * 10) / 10;
-  const battenRows = Math.max(2, Math.ceil((slopeLen * 1000) / Math.max(100, f.battenCC)) + 1);
+  const coverStart = Math.min(Math.max(0, p.roof.coverStart || 0), Math.max(0, edgeRun - 0.3));
+  const coveredRun = Math.max(0.1, edgeRun - coverStart);
+  const coveredSlope = coveredRun / Math.cos(d.angleRad);          // täckt del (råspont/papp/läkt/plåt)
+  const battenRows = Math.max(2, Math.ceil((coveredSlope * 1000) / Math.max(100, f.battenCC)) + 1);
   const os = p.roof.overhangSide || 0;
   const roofW = p.roof.width + 2 * os;
   const battenLM = battenRows * roofW;
   const stroCC = f.stroCC || 600;
   const stroCols = Math.max(2, Math.ceil((p.roof.width * 1000) / Math.max(100, stroCC)) + 1);
-  const stroLM = stroCols * rafterOrder;
+  const stroLM = stroCols * (Math.ceil((coveredSlope + 0.1) * 10) / 10);
   const front = Math.max(1, Math.round(p.deck.posts));
   const back = p.deck.roofAttach === "free" ? front : 0;
   const posts = front + back;
-  const roofArea = roofW * slopeLen;
+  const roofArea = roofW * coveredSlope;
   const covering = f.roofType || "TP20 plåt";
   const isKlick = /klick/i.test(covering);
-  const seams = Math.max(0, Math.ceil(roofW / 1.09) - 1);          // längsgående skarvar (TP20 täckbredd ~1,09 m)
-  const farmar = Math.ceil(roofArea * (isKlick ? 6 : 9));          // infästningsskruv i bärläkt
-  const overlap = isKlick ? 0 : Math.ceil(seams * slopeLen * 3);   // sidöverlapp cc ~330 mm
-  const butyl = Math.ceil(seams * slopeLen + roofW);               // tätning skarvar + nock
-  return { fack, rafters, slopeLen, rafterOrder, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, covering, isKlick, seams, farmar, overlap, butyl, angleDeg: d.angleDeg };
+  const seams = Math.max(0, Math.ceil(roofW / 1.09) - 1);
+  const farmar = Math.ceil(roofArea * (isKlick ? 6 : 9));
+  const overlap = isKlick ? 0 : Math.ceil(seams * coveredSlope * 3);
+  const butyl = Math.ceil(seams * coveredSlope + roofW);
+  const backBeamAt = p.roof.backBeam === "takfot" ? "vid takfoten" : "vid huset";
+  return { fack, rafters, slopeLen, rafterOrder, coverStart, coveredSlope, battenRows, battenLM, stroCols, stroLM, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, covering, isKlick, seams, farmar, overlap, butyl, backBeamAt, angleDeg: d.angleDeg };
 }
+
+// Grova ungefärliga à-priser (kr per enhet) – användaren redigerar själv.
+const PRICE_DEFAULTS = {
+  "Takstolar / reglar": 55, "Bärlinor": 130, "Stolpar": 160, "Råspont": 85, "Takpapp": 35,
+  "Ströläkt": 9, "Bärläkt": 16, "Takyta": 190, "Farmarskruv": 1.2, "Överlappsskruv": 0.8, "Butylband": 14,
+};
+const priceFor = (p, name) => {
+  const v = p.prices ? p.prices[name] : undefined;
+  return (v === undefined || v === null || v === "" || isNaN(v)) ? (PRICE_DEFAULTS[name] ?? 0) : v;
+};
+const kr = (v) => `${Math.round(v).toLocaleString("sv-SE")} kr`;
 
 function bomRows(p) {
   const b = computeBom(p);
   const f = p.frame;
-  return [
-    ["Takstolar / reglar", f.rafterDim, `${b.rafters} st`, `cc ${f.rafterCC} mm · ${b.fack} fack · längd ca ${num(b.rafterOrder)} m`],
-    ["Bärlinor", f.beamDim, `${b.beams} st`, `längd ${num(b.beamLen)} m (fram + bak)`],
-    ["Stolpar", f.postDim, `${b.posts} st`, b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`],
-    ["Råspont", f.raspontDim || "17×95", `${num(b.roofArea * 1.1)} m²`, `hela takytan + ca 10% spill`],
-    ["Takpapp", f.papptyp || "YEP 2500", `${num(b.roofArea * 1.15)} m²`, `underlagspapp på råspont · inkl. överlapp`],
-    ["Ströläkt", f.stroDim || "25×48", `${b.stroCols} st`, `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} löpmeter`],
-    ["Bärläkt", f.battenDim, `${b.battenRows} rader`, `cc ${f.battenCC} mm · ca ${num(b.battenLM)} löpmeter (takbredd ${num(b.roofW)} m inkl. sidoutskjut)`],
-    ["Takyta", b.covering, `${num(b.roofArea)} m²`, `taklutning ca ${num(b.angleDeg)}°`],
-    ["Farmarskruv", "för infästning", `${b.farmar} st`, `ca ${b.isKlick ? 6 : 9} st/m² i bärläkt`],
-    ...(b.isKlick ? [] : [["Överlappsskruv", "för sidöverlapp", `${b.overlap} st`, `${b.seams} skarv${b.seams === 1 ? "" : "ar"} · cc ca 330 mm`]]),
-    ["Butylband", "tätningsband", `ca ${b.butyl} m`, `nock + längsgående skarvar`],
+  const rows = [
+    { name: "Takstolar / reglar", dim: f.rafterDim, antal: `${b.rafters} st`, detalj: `cc ${f.rafterCC} mm · ${b.fack} fack · längd ca ${num(b.rafterOrder)} m`, pq: b.rafters * b.rafterOrder, pu: "lpm" },
+    { name: "Bärlinor", dim: f.beamDim, antal: `${b.beams} st`, detalj: `längd ${num(b.beamLen)} m · fram vid stolplinjen + bak ${b.backBeamAt}`, pq: b.beams * b.beamLen, pu: "lpm" },
+    { name: "Stolpar", dim: f.postDim, antal: `${b.posts} st`, detalj: b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`, pq: b.posts, pu: "st" },
+    { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea * 1.1)} m²`, detalj: `hela takytan + ca 10% spill`, pq: b.roofArea * 1.1, pu: "m²" },
+    { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${num(b.roofArea * 1.15)} m²`, detalj: `underlagspapp på råspont · inkl. överlapp`, pq: b.roofArea * 1.15, pu: "m²" },
+    { name: "Ströläkt", dim: f.stroDim || "25×48", antal: `${b.stroCols} st`, detalj: `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} lpm`, pq: b.stroLM, pu: "lpm" },
+    { name: "Bärläkt", dim: f.battenDim, antal: `${b.battenRows} rader`, detalj: `cc ${f.battenCC} mm · ca ${num(b.battenLM)} lpm (takbredd ${num(b.roofW)} m inkl. sidoutskjut)`, pq: b.battenLM, pu: "lpm" },
+    { name: "Takyta", dim: b.covering, antal: `${num(b.roofArea)} m²`, detalj: `taklutning ca ${num(b.angleDeg)}°${b.coverStart > 0.01 ? ` · börjar ${num(b.coverStart)} m från huset` : ""}`, pq: b.roofArea, pu: "m²" },
+    { name: "Farmarskruv", dim: "för infästning", antal: `${b.farmar} st`, detalj: `ca ${b.isKlick ? 6 : 9} st/m² i bärläkt`, pq: b.farmar, pu: "st" },
+    ...(b.isKlick ? [] : [{ name: "Överlappsskruv", dim: "för sidöverlapp", antal: `${b.overlap} st`, detalj: `${b.seams} skarv${b.seams === 1 ? "" : "ar"} · cc ca 330 mm`, pq: b.overlap, pu: "st" }]),
+    { name: "Butylband", dim: "tätningsband", antal: `ca ${b.butyl} m`, detalj: `nock + längsgående skarvar`, pq: b.butyl, pu: "m" },
   ];
+  return rows;
 }
 
 // --- Lagring (localStorage med säker degradering om den är blockerad) ---
@@ -190,6 +206,7 @@ const newOpening = (kind) =>
 
 const DEFAULT_PROJECT = {
   name: "Mitt altanprojekt",
+  prices: {},
   house: {
     width: 18, depth: 9, height: 5, overhang: 1.5, roofPitch: 24,
     recess: { on: true, width: 9, depth: 1.5, offset: 0 }, // indrag i fasaden
@@ -201,7 +218,7 @@ const DEFAULT_PROJECT = {
   },
   railing: { on: true, height: 1.0, type: "vertical", back: false, rows: 4, vcount: 40 }, // rows=liggande, vcount=stående
   stairs: { on: false, side: "right", width: 1.2, pos: 0, steps: 3 }, // side: front | left | right
-  roof: { width: 8, depth: 4, heightAtWall: 2.6, slope: 15, overhangFront: 0.3, overhangSide: 0.3 },
+  roof: { width: 8, depth: 4, heightAtWall: 2.6, slope: 15, overhangFront: 0.3, overhangSide: 0.3, coverStart: 0, backBeam: "hus" },
   // Virke/stomme för materiallistan
   frame: {
     rafterDim: "45×220", rafterCC: 600,
@@ -743,6 +760,12 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
             <NumberField label="Lutning" unit="cm/m" value={project.roof.slope} onChange={(v) => setRoof("slope", v)} step={1} min={0} max={120} />
             <NumberField label="Takutsprång fram (utöver stolplinjen)" value={project.roof.overhangFront} onChange={(v) => setRoof("overhangFront", v)} min={0} max={2} />
             <NumberField label="Takutsprång sida (per sida)" value={project.roof.overhangSide ?? 0.3} onChange={(v) => setRoof("overhangSide", v)} min={0} max={1.5} />
+            <NumberField label="Takytan börjar (m från huset)" value={project.roof.coverStart ?? 0} onChange={(v) => setRoof("coverStart", v)} min={0} max={Math.max(0, project.roof.depth + (project.roof.overhangFront || 0) - 0.3)} />
+            <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 10px" }}>
+              0 = börjar vid huset. Sätt t.ex. till husets takutsprång så börjar altantaket vid befintlig takfot (mindre material). Reglarna sitter kvar mot huset.
+            </div>
+            <div style={{ fontSize: 12.5, color: T.dim, marginBottom: 5 }}>Bakre bärlina</div>
+            <Toggle value={project.roof.backBeam || "hus"} onChange={(v) => setRoof("backBeam", v)} options={[{ value: "hus", label: "Vid huset" }, { value: "takfot", label: "Vid takfoten" }]} />
 
             <div style={{ marginTop: 10, padding: "12px 13px", borderRadius: 11, background: lowHeadroom ? "#2a1c10" : "#10201d", border: `1px solid ${lowHeadroom ? "#5a3a1c" : "#1f4038"}` }}>
               <div style={{ fontSize: 12, color: T.dim, marginBottom: 3 }}>Ståhöjd vid framkant (under takstol)</div>
@@ -1444,14 +1467,18 @@ function View3D({ project }) {
       if (deck.hasRoof) {
         const frame = p.frame || {};
         const R = roof.depth + (roof.overhangFront || 0);
+        const cs = Math.min(Math.max(0, roof.coverStart || 0), Math.max(0, R - 0.3)); // takytan börjar här
+        const covMidZ = (cs + R) / 2;
         const os = roof.overhangSide || 0;
-        const roofW = roof.width + 2 * os;          // total takbredd inkl. sidoutskjut
+        const roofW = roof.width + 2 * os;
         const slopeLen = Math.sqrt(R * R + dv.edgeDrop * dv.edgeDrop);
-        const planeMidY = deckTop + roof.heightAtWall - dv.edgeDrop / 2; // ovankant takstol (mitt)
+        const covSlope = slopeLen * ((R - cs) / R);
+        const planeMidY = deckTop + roof.heightAtWall - dv.edgeDrop / 2;
         const planeYat = (z) => deckTop + roof.heightAtWall - (roof.slope / 100) * z;
+        const planeCovMidY = planeYat(covMidZ);
         const rDepth = dv.rafterDepth || 0.22;
 
-        // Takstolar (45 mm breda, på högkant längs fallet) – på strukturbredden
+        // Takstolar – full längd, sitter kvar mot huset
         const rCC = Math.max(0.1, (frame.rafterCC || 600) / 1000);
         const nR = Math.max(2, Math.floor(roof.width / rCC) + 1);
         for (let i = 0; i < nR; i++) {
@@ -1459,7 +1486,7 @@ function View3D({ project }) {
           addBox(0.045, rDepth, slopeLen, px, planeMidY - rDepth / 2, R / 2, mat.rafter, dv.angleRad);
         }
 
-        // Ströläkt (längs fallet, ovanpå takstolarna)
+        // Ströläkt – endast över den täckta delen (cs..R)
         const sCC = Math.max(0.1, (frame.stroCC || 600) / 1000);
         const sp = String(frame.stroDim || "25×48").split("×");
         const sThick = (parseFloat(sp[0]) || 25) / 1000;
@@ -1467,25 +1494,26 @@ function View3D({ project }) {
         const nS = Math.max(2, Math.floor(roof.width / sCC) + 1);
         for (let i = 0; i < nS; i++) {
           const px = deck.offset - roof.width / 2 + (i / (nS - 1)) * roof.width;
-          addBox(sWide, sThick, slopeLen, px, planeMidY + sThick / 2 + 0.006, R / 2, mat.batten, dv.angleRad);
+          addBox(sWide, sThick, covSlope, px, planeCovMidY + sThick / 2 + 0.006, covMidZ, mat.batten, dv.angleRad);
         }
 
-        // Bärläkt (tvärs takstolarna, ovanpå ströläkten) – hela takbredden inkl. sidoutskjut
+        // Bärläkt – endast täckta delen, hela takbredden inkl. sidoutskjut
         const bCC = Math.max(0.1, (frame.battenCC || 600) / 1000);
-        const nB = Math.max(2, Math.floor(slopeLen / bCC) + 1);
+        const nB = Math.max(2, Math.floor(covSlope / bCC) + 1);
         for (let k = 0; k < nB; k++) {
-          const z = (k / (nB - 1)) * R;
+          const z = cs + (k / (nB - 1)) * (R - cs);
           addBox(roofW, 0.045, 0.07, deck.offset, planeYat(z) + 0.055, z, mat.batten);
         }
 
-        // Takplåt överst – hela takbredden inkl. sidoutskjut
-        addBox(roofW, 0.03, slopeLen, deck.offset, planeMidY + 0.12, R / 2, mat.roof, dv.angleRad);
+        // Takplåt/klick överst – endast täckta delen
+        addBox(roofW, 0.03, covSlope, deck.offset, planeCovMidY + 0.12, covMidZ, mat.roof, dv.angleRad);
 
-        // Bärlinor (fram vid stolplinjen + bak vid vägg) under takstolarna
+        // Bärlinor: fram vid stolplinjen + bak (vid huset eller vid takfoten)
         const bp = String(frame.beamDim || "56×225").split("×");
         const beamW = (parseFloat(bp[0]) || 56) / 1000;
         const beamH = (parseFloat(bp[1]) || 225) / 1000;
-        [0.12, deck.depth].forEach((z) => {
+        const backZ = roof.backBeam === "takfot" ? cs : 0.12;
+        [backZ, deck.depth].forEach((z) => {
           addBox(roof.width, beamH, beamW, deck.offset, planeYat(z) - rDepth - beamH / 2, z, mat.beam);
         });
       }
@@ -1976,33 +2004,58 @@ function MeasureTable({ project }) {
   );
 }
 
-function BomTable({ project }) {
+function PriceInput({ value, unit, onChange }) {
+  const [t, setT] = useState(String(value ?? ""));
+  useEffect(() => { setT(String(value ?? "")); }, [value]);
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+      <input value={t} inputMode="decimal"
+        onChange={(e) => { setT(e.target.value); const v = parseFloat(e.target.value.replace(",", ".")); if (!isNaN(v)) onChange(v); }}
+        style={{ width: 52, padding: "5px 6px", border: "1px solid #d4d9df", borderRadius: 6, fontSize: 12.5, textAlign: "right", background: "#fff", color: "#0f172a" }} />
+      <span style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap" }}>kr/{unit}</span>
+    </span>
+  );
+}
+
+function BomTable({ project, set }) {
   const rows = bomRows(project);
+  const price = (name) => priceFor(project, name);
+  const total = rows.reduce((s, r) => s + r.pq * price(r.name), 0);
+  const setPrice = (name, v) => set && set((p) => ({ ...p, prices: { ...(p.prices || {}), [name]: v } }));
   return (
     <div style={{ background: "#fff", border: "1px solid #d4d9df", borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "11px 16px", borderBottom: "1px solid #e6e9ed", background: "#f7f8fa", fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>MATERIALLISTA (UPPSKATTAD)</div>
+      <div style={{ padding: "11px 16px", borderBottom: "1px solid #e6e9ed", background: "#f7f8fa", fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>MATERIALLISTA MED KOSTNAD (UPPSKATTAD)</div>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
-          <tr style={{ borderBottom: "1px solid #e6e9ed", color: "#64748b", fontSize: 11.5, textTransform: "uppercase" }}>
-            <th style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600 }}>Del</th>
-            <th style={{ padding: "8px 10px", textAlign: "left", fontWeight: 600 }}>Dimension</th>
-            <th style={{ padding: "8px 10px", textAlign: "right", fontWeight: 600 }}>Antal</th>
-            <th style={{ padding: "8px 16px", textAlign: "left", fontWeight: 600 }}>Detalj</th>
+          <tr style={{ borderBottom: "1px solid #e6e9ed", color: "#64748b", fontSize: 11, textTransform: "uppercase" }}>
+            <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600 }}>Del</th>
+            <th style={{ padding: "8px 6px", textAlign: "right", fontWeight: 600 }}>Antal</th>
+            <th style={{ padding: "8px 6px", textAlign: "right", fontWeight: 600 }}>À-pris</th>
+            <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>Summa</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(([del, dim, antal, detalj], i) => (
+          {rows.map((r, i) => (
             <tr key={i} style={{ borderBottom: "1px solid #eef1f4" }}>
-              <td style={{ padding: "9px 16px", color: "#0f172a", fontWeight: 600 }}>{del}</td>
-              <td style={{ padding: "9px 10px", color: "#475569" }}>{dim}</td>
-              <td style={{ padding: "9px 10px", color: "#0f172a", fontWeight: 600, textAlign: "right", whiteSpace: "nowrap" }}>{antal}</td>
-              <td style={{ padding: "9px 16px", color: "#64748b", fontSize: 12 }}>{detalj}</td>
+              <td style={{ padding: "9px 12px" }}>
+                <div style={{ color: "#0f172a", fontWeight: 600 }}>{r.name}</div>
+                <div style={{ color: "#94a3b8", fontSize: 11.5 }}>{r.dim} · {r.detalj}</div>
+              </td>
+              <td style={{ padding: "9px 6px", textAlign: "right", whiteSpace: "nowrap", color: "#475569" }}>{r.antal}</td>
+              <td style={{ padding: "9px 6px", textAlign: "right" }}><PriceInput value={price(r.name)} unit={r.pu} onChange={(v) => setPrice(r.name, v)} /></td>
+              <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>{kr(r.pq * price(r.name))}</td>
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr style={{ borderTop: "2px solid #cbd5e1", background: "#f7f8fa" }}>
+            <td colSpan={3} style={{ padding: "11px 12px", fontWeight: 700, color: "#0f172a", textAlign: "right" }}>Totalt (material, ca)</td>
+            <td style={{ padding: "11px 12px", fontWeight: 800, color: "#0f172a", textAlign: "right", whiteSpace: "nowrap" }}>{kr(total)}</td>
+          </tr>
+        </tfoot>
       </table>
       <div style={{ padding: "10px 16px", borderTop: "1px solid #e6e9ed", fontSize: 11, color: "#94a3b8" }}>
-        Mängderna beräknas ur takets mått och dina cc-avstånd. Dimensioner och cc är egna val — kontrollera bärförmåga och snölast med konstruktör eller virkeshandel för din ort.
+        À-priser är egna, redigerbara uppskattningar (kr per enhet) – skriv in dagspris från din bygghandel. Mängder beräknas ur takets mått och dina cc-avstånd. Priset är exkl. spik/frakt och gäller inte som offert. Kontrollera bärförmåga/snölast med konstruktör.
       </div>
     </div>
   );
@@ -2064,7 +2117,7 @@ function MaterialView({ project, set }) {
             Antal stolpar styrs i Altan-panelen ({Math.round(project.deck.posts)} st fram{project.deck.roofAttach === "free" ? " + lika många bak" : ", bak infäst i vägg"}).
           </div>
         </div>
-        <BomTable project={project} />
+        <BomTable project={project} set={set} />
       </div>
     </div>
   );
@@ -2121,31 +2174,40 @@ function RoofFramingDrawing({ project, width = 720 }) {
   const roofW = roof.width + 2 * os;
   const of = roof.overhangFront || 0;
   const R = roof.depth + of;
+  const cs = Math.min(Math.max(0, roof.coverStart || 0), Math.max(0, R - 0.3));
+  const covRun = R - cs;
   const M = 54, H = 440;
   const s = Math.min((width - 2 * M) / roofW, (H - 2 * M - 34) / R);
   const X = (xm) => width / 2 + xm * s;
   const Y = (ym) => M + ym * s;
   const d = derive(project);
-  const slopeLen = R / Math.cos(d.angleRad || 0);
+  const covSlope = covRun / Math.cos(d.angleRad || 0);
   const rCC = Math.max(0.1, (f.rafterCC || 600) / 1000);
   const sCC = Math.max(0.1, (f.stroCC || 600) / 1000);
   const bCC = Math.max(0.1, (f.battenCC || 600) / 1000);
   const nR = Math.max(2, Math.floor(roof.width / rCC) + 1);
   const nS = Math.max(2, Math.floor(roof.width / sCC) + 1);
-  const nB = Math.max(2, Math.floor(slopeLen / bCC) + 1);
+  const nB = Math.max(2, Math.floor(covSlope / bCC) + 1);
   const colXs = (n) => Array.from({ length: n }, (_, i) => -roof.width / 2 + (i / (n - 1)) * roof.width);
-  const battenYs = Array.from({ length: nB }, (_, i) => (i / (nB - 1)) * R);
+  const battenYs = Array.from({ length: nB }, (_, i) => cs + (i / (nB - 1)) * covRun);
 
   return (
     <Paper title="LÄKTPLAN (takstomme uppifrån)" scaleNote={`${num(roofW)} × ${num(R)} m`} width={width} height={H}>
       <rect x="0" y="0" width={width} height={H} fill="#fff" />
       <rect x={X(-roofW / 2)} y={Y(0)} width={roofW * s} height={R * s} fill="#f7f8fa" stroke="#334155" strokeWidth="1.8" />
+      {cs > 0.01 && <rect x={X(-roofW / 2)} y={Y(cs)} width={roofW * s} height={covRun * s} fill="#eef7f4" />}
       {os > 0.001 && [-roof.width / 2, roof.width / 2].map((x, i) => (
         <line key={"g" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#94a3b8" strokeWidth="1.4" strokeDasharray="6 4" />
       ))}
       {colXs(nR).map((x, i) => (<line key={"r" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#334155" strokeWidth="4" strokeLinecap="round" />))}
-      {colXs(nS).map((x, i) => (<line key={"s" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#d68a2a" strokeWidth="2.2" />))}
+      {colXs(nS).map((x, i) => (<line key={"s" + i} x1={X(x)} y1={Y(cs)} x2={X(x)} y2={Y(R)} stroke="#d68a2a" strokeWidth="2.2" />))}
       {battenYs.map((y, i) => (<line key={"b" + i} x1={X(-roofW / 2)} y1={Y(y)} x2={X(roofW / 2)} y2={Y(y)} stroke="#0f766e" strokeWidth="2.8" />))}
+      {cs > 0.01 && (
+        <>
+          <line x1={X(-roofW / 2)} y1={Y(cs)} x2={X(roofW / 2)} y2={Y(cs)} stroke="#b91c1c" strokeWidth="1.6" strokeDasharray="7 5" />
+          <text x={X(roofW / 2) - 4} y={Y(cs) - 5} fontSize="9.5" fontFamily={FONT} fill="#b91c1c" textAnchor="end">takytan börjar ({num(cs)} m)</text>
+        </>
+      )}
       <text x={X(0)} y={Y(0) - 8} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">MOT HUS</text>
       <text x={X(0)} y={Y(R) + 15} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">FRAMKANT (takfot)</text>
       {os > 0.001 && (
@@ -2265,29 +2327,43 @@ function tableSvgBlock(title, rows, width) {
 }
 
 // Fyrkolumns materialtabell för PDF (Del · Dimension · Antal · Detalj)
-function bomTableSvgBlock(rows, width) {
-  const titleH = 32, headH = 22, rowH = 24, noteH = 24, pad = 14;
-  const cx = { del: pad, dim: Math.round(width * 0.27), antal: Math.round(width * 0.47), detalj: Math.round(width * 0.57) };
+function bomTableSvgBlock(rows, project, width) {
+  const titleH = 32, headH = 22, rowH = 24, totalH = 30, noteH = 26, pad = 14;
+  const cx = { del: pad, dim: Math.round(width * 0.24), antal: Math.round(width * 0.44), apris: Math.round(width * 0.60) };
+  const sumX = width - pad;
   const bodyBottom = titleH + headH + rows.length * rowH;
-  const h = bodyBottom + noteH + 2;
+  const totalBottom = bodyBottom + totalH;
+  const h = totalBottom + noteH + 2;
+  let total = 0;
   let b = `<rect x="0" y="0" width="${width}" height="${h}" fill="#fff" stroke="#d4d9df"/>`;
   b += `<rect x="0" y="0" width="${width}" height="${titleH}" fill="#f7f8fa"/>`;
-  b += `<text x="${pad}" y="${titleH - 11}" font-family="sans-serif" font-size="13" font-weight="700" fill="#0f172a">MATERIALLISTA (UPPSKATTAD)</text>`;
+  b += `<text x="${pad}" y="${titleH - 11}" font-family="sans-serif" font-size="13" font-weight="700" fill="#0f172a">MATERIALLISTA MED KOSTNAD (UPPSKATTAD)</text>`;
   b += `<line x1="0" y1="${titleH}" x2="${width}" y2="${titleH}" stroke="#e6e9ed"/>`;
   const hy = titleH + headH - 7;
-  const heads = [["DEL", cx.del], ["DIMENSION", cx.dim], ["ANTAL", cx.antal], ["DETALJ", cx.detalj]];
-  heads.forEach(([t, x]) => { b += `<text x="${x}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">${t}</text>`; });
+  b += `<text x="${cx.del}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">DEL</text>`;
+  b += `<text x="${cx.dim}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">DIMENSION</text>`;
+  b += `<text x="${cx.antal}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">ANTAL</text>`;
+  b += `<text x="${cx.apris}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">À-PRIS</text>`;
+  b += `<text x="${sumX}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b" text-anchor="end">SUMMA</text>`;
   b += `<line x1="0" y1="${titleH + headH}" x2="${width}" y2="${titleH + headH}" stroke="#e6e9ed"/>`;
   rows.forEach((r, i) => {
     const y = titleH + headH + i * rowH, ty = y + 16;
-    b += `<text x="${cx.del}" y="${ty}" font-family="sans-serif" font-size="12" font-weight="600" fill="#0f172a">${xmlEsc(r[0])}</text>`;
-    b += `<text x="${cx.dim}" y="${ty}" font-family="sans-serif" font-size="12" fill="#475569">${xmlEsc(r[1])}</text>`;
-    b += `<text x="${cx.antal}" y="${ty}" font-family="sans-serif" font-size="12" font-weight="600" fill="#0f172a">${xmlEsc(r[2])}</text>`;
-    b += `<text x="${cx.detalj}" y="${ty}" font-family="sans-serif" font-size="11" fill="#64748b">${xmlEsc(r[3])}</text>`;
+    const price = priceFor(project, r.name);
+    const summa = r.pq * price;
+    total += summa;
+    b += `<text x="${cx.del}" y="${ty}" font-family="sans-serif" font-size="11.5" font-weight="600" fill="#0f172a">${xmlEsc(r.name)}</text>`;
+    b += `<text x="${cx.dim}" y="${ty}" font-family="sans-serif" font-size="11.5" fill="#475569">${xmlEsc(r.dim)}</text>`;
+    b += `<text x="${cx.antal}" y="${ty}" font-family="sans-serif" font-size="11.5" fill="#0f172a">${xmlEsc(r.antal)}</text>`;
+    b += `<text x="${cx.apris}" y="${ty}" font-family="sans-serif" font-size="11" fill="#64748b">${xmlEsc(num(price))} kr/${xmlEsc(r.pu)}</text>`;
+    b += `<text x="${sumX}" y="${ty}" font-family="sans-serif" font-size="11.5" font-weight="600" fill="#0f172a" text-anchor="end">${xmlEsc(kr(summa))}</text>`;
     if (i < rows.length - 1) b += `<line x1="0" y1="${y + rowH}" x2="${width}" y2="${y + rowH}" stroke="#eef1f4"/>`;
   });
-  b += `<line x1="0" y1="${bodyBottom}" x2="${width}" y2="${bodyBottom}" stroke="#e6e9ed"/>`;
-  b += `<text x="${pad}" y="${bodyBottom + 15}" font-family="sans-serif" font-size="10" fill="#94a3b8">Uppskattade mängder ur takets mått och cc-avstånd. Kontrollera bärförmåga och snölast med konstruktör eller virkeshandel.</text>`;
+  b += `<rect x="0" y="${bodyBottom}" width="${width}" height="${totalH}" fill="#f7f8fa"/>`;
+  b += `<line x1="0" y1="${bodyBottom}" x2="${width}" y2="${bodyBottom}" stroke="#cbd5e1" stroke-width="1.5"/>`;
+  b += `<text x="${cx.apris + 60}" y="${bodyBottom + 19}" font-family="sans-serif" font-size="12" font-weight="700" fill="#0f172a" text-anchor="end">Totalt (material, ca)</text>`;
+  b += `<text x="${sumX}" y="${bodyBottom + 19}" font-family="sans-serif" font-size="13" font-weight="800" fill="#0f172a" text-anchor="end">${xmlEsc(kr(total))}</text>`;
+  b += `<line x1="0" y1="${totalBottom}" x2="${width}" y2="${totalBottom}" stroke="#e6e9ed"/>`;
+  b += `<text x="${pad}" y="${totalBottom + 16}" font-family="sans-serif" font-size="9.5" fill="#94a3b8">À-priser är egna uppskattningar – kontrollera dagspris hos din bygghandel. Exkl. spik/frakt. Ingen offert.</text>`;
   return { str: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}">${b}</svg>`, w: width, h };
 }
 
@@ -2367,7 +2443,7 @@ async function buildPdfUrl(project) {
   if (!drawings.length) throw new Error("Hittade inga ritningar att exportera.");
   const title = titleSvgBlock(project);
   const measure = tableSvgBlock("MÅTTSAMMANSTÄLLNING", measureRows(project), 760);
-  const bom = project.deck.hasRoof ? bomTableSvgBlock(bomRows(project), 760) : null;
+  const bom = project.deck.hasRoof ? bomTableSvgBlock(bomRows(project), project, 760) : null;
 
   const pagesBlocks = [];
   if (drawings[0]) pagesBlocks.push([title, drawings[0]]);
