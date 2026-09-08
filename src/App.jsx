@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.20 · råspont & takpapp i listan";
+const APP_VERSION = "v1.21 · ny rubrik på startsidan";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -238,8 +238,8 @@ function StartScreen({ onStart, saves = {}, onOpen, onDelete, onOpenFile }) {
           </span>
         </div>
         <h1 style={{ fontSize: 40, lineHeight: 1.05, margin: "10px 0 8px", fontWeight: 700 }}>
-          Rita din altan.<br />
-          <span style={{ color: T.wood }}>Klart för bygganmälan.</span>
+          Planera din altan.<br />
+          <span style={{ color: T.wood }}>3D, ritningar och materiallista.</span>
         </h1>
         <p style={{ color: T.dim, fontSize: 16, maxWidth: 520, margin: "0 0 28px" }}>
           Ett enkelt verktyg för villaägare. Mata in måtten, se modellen i 3D och få
