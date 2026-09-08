@@ -1,7 +1,7 @@
 {
   "name": "Altanritare",
   "short_name": "Altanritare",
-  "description": "Rita altaner, altantak och underlag för bygganmälan.",
+  "description": "Rita altaner, altantak och underlag.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
