@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.26 · valbar takstart & bakre bärlina";
+const APP_VERSION = "v1.28 · materiallista fixad på mobil";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -167,7 +167,7 @@ function bomRows(p) {
   const f = p.frame;
   const rows = [
     { name: "Takstolar / reglar", dim: f.rafterDim, antal: `${b.rafters} st`, detalj: `cc ${f.rafterCC} mm · ${b.fack} fack · längd ca ${num(b.rafterOrder)} m`, pq: b.rafters * b.rafterOrder, pu: "lpm" },
-    { name: "Bärlinor", dim: f.beamDim, antal: `${b.beams} st`, detalj: `längd ${num(b.beamLen)} m · fram vid stolplinjen + bak ${b.backBeamAt}`, pq: b.beams * b.beamLen, pu: "lpm" },
+    { name: "Bärlinor", dim: f.beamDim, antal: `${b.beams} st`, detalj: `längd ${num(b.beamLen)} m · fram vid stolplinjen + bak vid huset`, pq: b.beams * b.beamLen, pu: "lpm" },
     { name: "Stolpar", dim: f.postDim, antal: `${b.posts} st`, detalj: b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`, pq: b.posts, pu: "st" },
     { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea * 1.1)} m²`, detalj: `hela takytan + ca 10% spill`, pq: b.roofArea * 1.1, pu: "m²" },
     { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${num(b.roofArea * 1.15)} m²`, detalj: `underlagspapp på råspont · inkl. överlapp`, pq: b.roofArea * 1.15, pu: "m²" },
@@ -762,10 +762,8 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
             <NumberField label="Takutsprång sida (per sida)" value={project.roof.overhangSide ?? 0.3} onChange={(v) => setRoof("overhangSide", v)} min={0} max={1.5} />
             <NumberField label="Takytan börjar (m från huset)" value={project.roof.coverStart ?? 0} onChange={(v) => setRoof("coverStart", v)} min={0} max={Math.max(0, project.roof.depth + (project.roof.overhangFront || 0) - 0.3)} />
             <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 10px" }}>
-              0 = börjar vid huset. Sätt t.ex. till husets takutsprång så börjar altantaket vid befintlig takfot (mindre material). Reglarna sitter kvar mot huset.
+              0 = börjar vid huset. Sätt t.ex. till husets takutsprång så börjar altantaket vid befintlig takfot (mindre material). Reglarna och bakre bärlinan sitter kvar mot huset.
             </div>
-            <div style={{ fontSize: 12.5, color: T.dim, marginBottom: 5 }}>Bakre bärlina</div>
-            <Toggle value={project.roof.backBeam || "hus"} onChange={(v) => setRoof("backBeam", v)} options={[{ value: "hus", label: "Vid huset" }, { value: "takfot", label: "Vid takfoten" }]} />
 
             <div style={{ marginTop: 10, padding: "12px 13px", borderRadius: 11, background: lowHeadroom ? "#2a1c10" : "#10201d", border: `1px solid ${lowHeadroom ? "#5a3a1c" : "#1f4038"}` }}>
               <div style={{ fontSize: 12, color: T.dim, marginBottom: 3 }}>Ståhöjd vid framkant (under takstol)</div>
@@ -1508,12 +1506,11 @@ function View3D({ project }) {
         // Takplåt/klick överst – endast täckta delen
         addBox(roofW, 0.03, covSlope, deck.offset, planeCovMidY + 0.12, covMidZ, mat.roof, dv.angleRad);
 
-        // Bärlinor: fram vid stolplinjen + bak (vid huset eller vid takfoten)
+        // Bärlinor: fram vid stolplinjen + bak vid huset (stannar längst bak)
         const bp = String(frame.beamDim || "56×225").split("×");
         const beamW = (parseFloat(bp[0]) || 56) / 1000;
         const beamH = (parseFloat(bp[1]) || 225) / 1000;
-        const backZ = roof.backBeam === "takfot" ? cs : 0.12;
-        [backZ, deck.depth].forEach((z) => {
+        [0.12, deck.depth].forEach((z) => {
           addBox(roof.width, beamH, beamW, deck.offset, planeYat(z) - rDepth - beamH / 2, z, mat.beam);
         });
       }
@@ -2008,11 +2005,11 @@ function PriceInput({ value, unit, onChange }) {
   const [t, setT] = useState(String(value ?? ""));
   useEffect(() => { setT(String(value ?? "")); }, [value]);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
       <input value={t} inputMode="decimal"
         onChange={(e) => { setT(e.target.value); const v = parseFloat(e.target.value.replace(",", ".")); if (!isNaN(v)) onChange(v); }}
-        style={{ width: 52, padding: "5px 6px", border: "1px solid #d4d9df", borderRadius: 6, fontSize: 12.5, textAlign: "right", background: "#fff", color: "#0f172a" }} />
-      <span style={{ fontSize: 10.5, color: "#94a3b8", whiteSpace: "nowrap" }}>kr/{unit}</span>
+        style={{ width: 46, padding: "5px 5px", border: "1px solid #d4d9df", borderRadius: 6, fontSize: 12.5, textAlign: "right", background: "#fff", color: "#0f172a" }} />
+      <span style={{ fontSize: 9.5, color: "#94a3b8", whiteSpace: "nowrap", lineHeight: 1 }}>kr/{unit}</span>
     </span>
   );
 }
@@ -2025,35 +2022,37 @@ function BomTable({ project, set }) {
   return (
     <div style={{ background: "#fff", border: "1px solid #d4d9df", borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "11px 16px", borderBottom: "1px solid #e6e9ed", background: "#f7f8fa", fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>MATERIALLISTA MED KOSTNAD (UPPSKATTAD)</div>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid #e6e9ed", color: "#64748b", fontSize: 11, textTransform: "uppercase" }}>
-            <th style={{ padding: "8px 12px", textAlign: "left", fontWeight: 600 }}>Del</th>
-            <th style={{ padding: "8px 6px", textAlign: "right", fontWeight: 600 }}>Antal</th>
-            <th style={{ padding: "8px 6px", textAlign: "right", fontWeight: 600 }}>À-pris</th>
-            <th style={{ padding: "8px 12px", textAlign: "right", fontWeight: 600 }}>Summa</th>
+            <th style={{ padding: "7px 8px", textAlign: "left", fontWeight: 600 }}>Del</th>
+            <th style={{ padding: "7px 4px", textAlign: "right", fontWeight: 600 }}>Antal</th>
+            <th style={{ padding: "7px 4px", textAlign: "right", fontWeight: 600 }}>À-pris</th>
+            <th style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600 }}>Summa</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} style={{ borderBottom: "1px solid #eef1f4" }}>
-              <td style={{ padding: "9px 12px" }}>
+              <td style={{ padding: "8px 8px", minWidth: 120 }}>
                 <div style={{ color: "#0f172a", fontWeight: 600 }}>{r.name}</div>
-                <div style={{ color: "#94a3b8", fontSize: 11.5 }}>{r.dim} · {r.detalj}</div>
+                <div style={{ color: "#94a3b8", fontSize: 11 }}>{r.dim} · {r.detalj}</div>
               </td>
-              <td style={{ padding: "9px 6px", textAlign: "right", whiteSpace: "nowrap", color: "#475569" }}>{r.antal}</td>
-              <td style={{ padding: "9px 6px", textAlign: "right" }}><PriceInput value={price(r.name)} unit={r.pu} onChange={(v) => setPrice(r.name, v)} /></td>
-              <td style={{ padding: "9px 12px", textAlign: "right", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>{kr(r.pq * price(r.name))}</td>
+              <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap", color: "#475569" }}>{r.antal}</td>
+              <td style={{ padding: "8px 4px", textAlign: "right" }}><PriceInput value={price(r.name)} unit={r.pu} onChange={(v) => setPrice(r.name, v)} /></td>
+              <td style={{ padding: "8px 8px", textAlign: "right", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>{kr(r.pq * price(r.name))}</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr style={{ borderTop: "2px solid #cbd5e1", background: "#f7f8fa" }}>
-            <td colSpan={3} style={{ padding: "11px 12px", fontWeight: 700, color: "#0f172a", textAlign: "right" }}>Totalt (material, ca)</td>
-            <td style={{ padding: "11px 12px", fontWeight: 800, color: "#0f172a", textAlign: "right", whiteSpace: "nowrap" }}>{kr(total)}</td>
+            <td colSpan={3} style={{ padding: "11px 8px", fontWeight: 700, color: "#0f172a", textAlign: "right" }}>Totalt (ca)</td>
+            <td style={{ padding: "11px 8px", fontWeight: 800, color: "#0f172a", textAlign: "right", whiteSpace: "nowrap" }}>{kr(total)}</td>
           </tr>
         </tfoot>
       </table>
+      </div>
       <div style={{ padding: "10px 16px", borderTop: "1px solid #e6e9ed", fontSize: 11, color: "#94a3b8" }}>
         À-priser är egna, redigerbara uppskattningar (kr per enhet) – skriv in dagspris från din bygghandel. Mängder beräknas ur takets mått och dina cc-avstånd. Priset är exkl. spik/frakt och gäller inte som offert. Kontrollera bärförmåga/snölast med konstruktör.
       </div>
