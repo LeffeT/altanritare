@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.21 · ny rubrik på startsidan";
+const APP_VERSION = "v1.22 · regelplan med takutsprång";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -2058,6 +2058,49 @@ function MaterialView({ project, set }) {
   );
 }
 
+function RafterPlanDrawing({ project, width = 720 }) {
+  const { deck, roof } = project;
+  if (!deck.hasRoof) return null;
+  const f = project.frame || {};
+  const of = roof.overhangFront || 0;
+  const structDepth = roof.depth;   // stolplinje / framkant stomme
+  const R = structDepth + of;       // till takfot
+  const rw = roof.width;            // reglar på strukturbredden
+  const M = 56, H = 440;
+  const s = Math.min((width - 2 * M) / rw, (H - 2 * M - 34) / R);
+  const X = (xm) => width / 2 + xm * s;
+  const Y = (ym) => M + ym * s;
+  const rCC = Math.max(0.1, (f.rafterCC || 600) / 1000);
+  const nR = Math.max(2, Math.floor(rw / rCC) + 1);
+  const xs = Array.from({ length: nR }, (_, i) => -rw / 2 + (i / (nR - 1)) * rw);
+  return (
+    <Paper title="TAKREGLAR (regelplan uppifrån)" scaleNote={`cc ${f.rafterCC || 600} mm · ${nR} st · ${f.rafterDim}`} width={width} height={H}>
+      <rect x="0" y="0" width={width} height={H} fill="#fff" />
+      {of > 0.001 && <rect x={X(-rw / 2)} y={Y(structDepth)} width={rw * s} height={of * s} fill="#fdf3e3" />}
+      <rect x={X(-rw / 2)} y={Y(0)} width={rw * s} height={R * s} fill="none" stroke="#334155" strokeWidth="1.8" />
+      {xs.map((x, i) => (<line key={"r" + i} x1={X(x)} y1={Y(0)} x2={X(x)} y2={Y(R)} stroke="#334155" strokeWidth="4" strokeLinecap="round" />))}
+      {/* bärlinor: bak (vid hus) + fram (på stolplinjen) */}
+      <line x1={X(-rw / 2)} y1={Y(0.1)} x2={X(rw / 2)} y2={Y(0.1)} stroke="#0f766e" strokeWidth="5" strokeLinecap="round" />
+      <line x1={X(-rw / 2)} y1={Y(structDepth)} x2={X(rw / 2)} y2={Y(structDepth)} stroke="#0f766e" strokeWidth="5" strokeLinecap="round" />
+      {/* stolplinje (streckad, röd) */}
+      <line x1={X(-rw / 2)} y1={Y(structDepth)} x2={X(rw / 2)} y2={Y(structDepth)} stroke="#b91c1c" strokeWidth="1.4" strokeDasharray="7 5" />
+      <text x={X(0)} y={Y(0) - 9} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">MOT HUS (bakre bärlina)</text>
+      <text x={X(rw / 2) - 4} y={Y(structDepth) - 5} fontSize="9.5" fontFamily={FONT} fill="#b91c1c" textAnchor="end">stolplinje (bärlina fram)</text>
+      <text x={X(0)} y={Y(R) + 16} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">TAKFOT (framkant)</text>
+      {of > 0.001 && (
+        <>
+          <line x1={X(-rw / 2) - 14} y1={Y(structDepth)} x2={X(-rw / 2) - 14} y2={Y(R)} stroke="#b07b2f" strokeWidth="1.2" />
+          <text x={X(-rw / 2) - 18} y={(Y(structDepth) + Y(R)) / 2 + 3} fontSize="10" fontFamily={FONT} fill="#b07b2f" textAnchor="end">utsprång {num(of)} m</text>
+        </>
+      )}
+      <g>
+        <line x1={X(-rw / 2)} y1={Y(R) + 30} x2={X(rw / 2)} y2={Y(R) + 30} stroke="#94a3b8" strokeWidth="1" />
+        <text x={X(0)} y={Y(R) + 44} fontSize="10" fontFamily={FONT} fill="#64748b" textAnchor="middle">bredd {num(rw)} m</text>
+      </g>
+    </Paper>
+  );
+}
+
 function RoofFramingDrawing({ project, width = 720 }) {
   const { deck, roof } = project;
   if (!deck.hasRoof) return null;
@@ -2125,6 +2168,7 @@ function DrawingsView({ project }) {
         <PlanDrawing project={project} />
         <FacadeDrawing project={project} />
         <SectionDrawing project={project} />
+        {project.deck.hasRoof && <RafterPlanDrawing project={project} />}
         {project.deck.hasRoof && <RoofFramingDrawing project={project} />}
         <MeasureTable project={project} />
       </div>
@@ -2152,6 +2196,7 @@ function PrintLayout({ project }) {
         <PlanDrawing project={project} width={700} />
         <FacadeDrawing project={project} width={700} />
         <SectionDrawing project={project} width={700} />
+        {project.deck.hasRoof && <RafterPlanDrawing project={project} width={700} />}
         {project.deck.hasRoof && <RoofFramingDrawing project={project} width={700} />}
         <MeasureTable project={project} />
         {project.deck.hasRoof && <BomTable project={project} />}
