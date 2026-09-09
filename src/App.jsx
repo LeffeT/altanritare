@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.28 · materiallista fixad på mobil";
+const APP_VERSION = "v1.31 · tydlig faktisk takyta";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -169,11 +169,11 @@ function bomRows(p) {
     { name: "Takstolar / reglar", dim: f.rafterDim, antal: `${b.rafters} st`, detalj: `cc ${f.rafterCC} mm · ${b.fack} fack · längd ca ${num(b.rafterOrder)} m`, pq: b.rafters * b.rafterOrder, pu: "lpm" },
     { name: "Bärlinor", dim: f.beamDim, antal: `${b.beams} st`, detalj: `längd ${num(b.beamLen)} m · fram vid stolplinjen + bak vid huset`, pq: b.beams * b.beamLen, pu: "lpm" },
     { name: "Stolpar", dim: f.postDim, antal: `${b.posts} st`, detalj: b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`, pq: b.posts, pu: "st" },
-    { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea * 1.1)} m²`, detalj: `hela takytan + ca 10% spill`, pq: b.roofArea * 1.1, pu: "m²" },
-    { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${num(b.roofArea * 1.15)} m²`, detalj: `underlagspapp på råspont · inkl. överlapp`, pq: b.roofArea * 1.15, pu: "m²" },
+    { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea)} m²`, detalj: `hela takytan (verklig åtgång)`, pq: b.roofArea, pu: "m²" },
+    { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${num(b.roofArea)} m²`, detalj: `underlagspapp på råspont (verklig åtgång)`, pq: b.roofArea, pu: "m²" },
     { name: "Ströläkt", dim: f.stroDim || "25×48", antal: `${b.stroCols} st`, detalj: `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} lpm`, pq: b.stroLM, pu: "lpm" },
     { name: "Bärläkt", dim: f.battenDim, antal: `${b.battenRows} rader`, detalj: `cc ${f.battenCC} mm · ca ${num(b.battenLM)} lpm (takbredd ${num(b.roofW)} m inkl. sidoutskjut)`, pq: b.battenLM, pu: "lpm" },
-    { name: "Takyta", dim: b.covering, antal: `${num(b.roofArea)} m²`, detalj: `taklutning ca ${num(b.angleDeg)}°${b.coverStart > 0.01 ? ` · börjar ${num(b.coverStart)} m från huset` : ""}`, pq: b.roofArea, pu: "m²" },
+    { name: "Takyta", dim: b.covering, antal: `${num(b.roofArea)} m²`, detalj: `taklutning ca ${num(b.angleDeg)}°${b.coverStart > 0.01 ? ` · börjar ${num(b.coverStart)} m från huset` : ""} (verklig åtgång)`, pq: b.roofArea, pu: "m²" },
     { name: "Farmarskruv", dim: "för infästning", antal: `${b.farmar} st`, detalj: `ca ${b.isKlick ? 6 : 9} st/m² i bärläkt`, pq: b.farmar, pu: "st" },
     ...(b.isKlick ? [] : [{ name: "Överlappsskruv", dim: "för sidöverlapp", antal: `${b.overlap} st`, detalj: `${b.seams} skarv${b.seams === 1 ? "" : "ar"} · cc ca 330 mm`, pq: b.overlap, pu: "st" }]),
     { name: "Butylband", dim: "tätningsband", antal: `ca ${b.butyl} m`, detalj: `nock + längsgående skarvar`, pq: b.butyl, pu: "m" },
@@ -755,7 +755,7 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
         {project.deck.hasRoof && (
           <Section title="Tak (pulpettak)" Icon={TriangleRight} accent={T.cyan} open={openSection === "roof"} onToggle={() => toggle("roof")}>
             <NumberField label="Takbredd" value={project.roof.width} onChange={(v) => setRoof("width", v)} min={0.5} max={40} />
-            <NumberField label="Takdjup" value={project.roof.depth} onChange={(v) => setRoof("depth", v)} min={0.5} max={20} />
+            <NumberField label="Takdjup (stomme, hus → framkant)" value={project.roof.depth} onChange={(v) => setRoof("depth", v)} min={0.5} max={20} />
             <NumberField label="Höjd vid husvägg (till takstolens ovankant)" value={project.roof.heightAtWall} onChange={(v) => setRoof("heightAtWall", v)} min={1.5} max={8} />
             <NumberField label="Lutning" unit="cm/m" value={project.roof.slope} onChange={(v) => setRoof("slope", v)} step={1} min={0} max={120} />
             <NumberField label="Takutsprång fram (utöver stolplinjen)" value={project.roof.overhangFront} onChange={(v) => setRoof("overhangFront", v)} min={0} max={2} />
@@ -764,6 +764,20 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
             <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 10px" }}>
               0 = börjar vid huset. Sätt t.ex. till husets takutsprång så börjar altantaket vid befintlig takfot (mindre material). Reglarna och bakre bärlinan sitter kvar mot huset.
             </div>
+            {(() => {
+              const of = project.roof.overhangFront || 0;
+              const cs = Math.min(Math.max(0, project.roof.coverStart || 0), Math.max(0, project.roof.depth + of - 0.3));
+              const covRun = Math.max(0.1, project.roof.depth + of - cs);
+              const covSlope = covRun / Math.cos(Math.atan((project.roof.slope || 0) / 100));
+              const rw = project.roof.width + 2 * (project.roof.overhangSide || 0);
+              return (
+                <div style={{ background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 11.5, color: T.dim, marginBottom: 2 }}>Faktisk takyta (det som täcks)</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 650, color: T.wood }}>{m(rw)} × {m(covSlope)} ≈ {num(rw * covSlope)} m²</div>
+                  <div style={{ fontSize: 11, color: T.dim, marginTop: 2 }}>bredd inkl. sidoutskjut × täckt längd längs lutningen</div>
+                </div>
+              );
+            })()}
 
             <div style={{ marginTop: 10, padding: "12px 13px", borderRadius: 11, background: lowHeadroom ? "#2a1c10" : "#10201d", border: `1px solid ${lowHeadroom ? "#5a3a1c" : "#1f4038"}` }}>
               <div style={{ fontSize: 12, color: T.dim, marginBottom: 3 }}>Ståhöjd vid framkant (under takstol)</div>
@@ -2054,7 +2068,7 @@ function BomTable({ project, set }) {
       </table>
       </div>
       <div style={{ padding: "10px 16px", borderTop: "1px solid #e6e9ed", fontSize: 11, color: "#94a3b8" }}>
-        À-priser är egna, redigerbara uppskattningar (kr per enhet) – skriv in dagspris från din bygghandel. Mängder beräknas ur takets mått och dina cc-avstånd. Priset är exkl. spik/frakt och gäller inte som offert. Kontrollera bärförmåga/snölast med konstruktör.
+        À-priser är egna, redigerbara uppskattningar (kr per enhet) – skriv in dagspris från din bygghandel. Mängder är verklig åtgång ur takets mått (utan påslag för spill/överlapp – lägg till själv vid inköp). Priset är exkl. spik/frakt och gäller inte som offert. Kontrollera bärförmåga/snölast med konstruktör.
       </div>
     </div>
   );
