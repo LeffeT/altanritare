@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.31 · tydlig faktisk takyta";
+const APP_VERSION = "v1.33 · fixad utsprångsetikett + stolplinje i läktplan";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -2166,10 +2166,7 @@ function RafterPlanDrawing({ project, width = 720 }) {
       <text x={X(rw / 2) - 4} y={Y(structDepth) - 5} fontSize="9.5" fontFamily={FONT} fill="#b91c1c" textAnchor="end">stolplinje (bärlina fram)</text>
       <text x={X(0)} y={Y(R) + 16} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">TAKFOT (framkant)</text>
       {of > 0.001 && (
-        <>
-          <line x1={X(-rw / 2) - 14} y1={Y(structDepth)} x2={X(-rw / 2) - 14} y2={Y(R)} stroke="#b07b2f" strokeWidth="1.2" />
-          <text x={X(-rw / 2) - 18} y={(Y(structDepth) + Y(R)) / 2 + 3} fontSize="10" fontFamily={FONT} fill="#b07b2f" textAnchor="end">utsprång {num(of)} m</text>
-        </>
+        <text x={X(-rw / 2) + 8} y={(Y(structDepth) + Y(R)) / 2 + 3} fontSize="10" fontFamily={FONT} fill="#b07b2f" fontWeight="600" textAnchor="start">utsprång {num(of)} m</text>
       )}
       <g>
         <line x1={X(-rw / 2)} y1={Y(R) + 30} x2={X(rw / 2)} y2={Y(R) + 30} stroke="#94a3b8" strokeWidth="1" />
@@ -2219,6 +2216,12 @@ function RoofFramingDrawing({ project, width = 720 }) {
         <>
           <line x1={X(-roofW / 2)} y1={Y(cs)} x2={X(roofW / 2)} y2={Y(cs)} stroke="#b91c1c" strokeWidth="1.6" strokeDasharray="7 5" />
           <text x={X(roofW / 2) - 4} y={Y(cs) - 5} fontSize="9.5" fontFamily={FONT} fill="#b91c1c" textAnchor="end">takytan börjar ({num(cs)} m)</text>
+        </>
+      )}
+      {of > 0.001 && (
+        <>
+          <line x1={X(-roofW / 2)} y1={Y(roof.depth)} x2={X(roofW / 2)} y2={Y(roof.depth)} stroke="#334155" strokeWidth="1.3" strokeDasharray="4 4" />
+          <text x={X(-roofW / 2) + 6} y={Y(roof.depth) + 13} fontSize="9" fontFamily={FONT} fill="#475569" textAnchor="start">stolplinje (bärlina fram)</text>
         </>
       )}
       <text x={X(0)} y={Y(0) - 8} fontSize="10.5" fontFamily={FONT} fill="#475569" textAnchor="middle">MOT HUS</text>
@@ -2536,12 +2539,20 @@ export default function App() {
     const next = { ...loadSaves() }; delete next[name];
     storeSaves(next); setSaves(next);
   };
-  const exportProjectFile = () => {
+  const exportProjectFile = async () => {
+    const name = `${(project.name || "altan").replace(/[^\w\-åäöÅÄÖ ]+/g, "").trim() || "altan"}.json`;
+    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
     try {
-      const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+      const file = new File([blob], name, { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: name });
+        return;
+      }
+    } catch (_) { /* faller igenom till nedladdning */ }
+    try {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `${(project.name || "altan").replace(/[^\w\-åäöÅÄÖ ]+/g, "").trim() || "altan"}.json`;
+      a.href = url; a.download = name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } catch (_) { showToast("Kunde inte exportera filen här"); }
@@ -2743,12 +2754,12 @@ export default function App() {
 
             <div style={{ margin: "18px 0 8px", fontSize: 12, color: T.dim, letterSpacing: 0.5, textTransform: "uppercase" }}>Säkerhetskopia (fil)</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={exportProjectFile} style={{ flex: 1, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Exportera fil</button>
+              <button onClick={exportProjectFile} style={{ flex: 1, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Dela / spara fil</button>
               <button onClick={() => fileRef.current && fileRef.current.click()} style={{ flex: 1, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Öppna fil</button>
             </div>
             <input ref={fileRef} type="file" accept="application/json,.json" onChange={importProjectFile} style={{ display: "none" }} />
             <div style={{ fontSize: 11.5, color: T.dim, marginTop: 10, lineHeight: 1.5 }}>
-              Sparade projekt ligger i denna webbläsare. Exportera en fil för att flytta projektet till en annan enhet eller som backup.
+              Sparade projekt ligger i denna webbläsare. "Dela / spara fil" öppnar delningsmenyn där du kan välja "Spara i Filer" – bra för backup eller för att flytta projektet till en annan enhet.
             </div>
           </div>
         </div>
