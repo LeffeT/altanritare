@@ -3,7 +3,7 @@ import * as THREE from "three";
 import {
   Home, Square, Ruler, FileText, Download, Box, Layers,
   RotateCcw, Pencil, ChevronRight, TriangleRight, Maximize, Minimize,
-  Hammer, ChevronDown, Menu, Save, FolderOpen, Plus
+  Hammer, ChevronDown, Menu, Save, FolderOpen, Plus, Image as ImageIcon, X as XIcon
 } from "lucide-react";
 
 /* ===========================================================================
@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.33 · fixad utsprångsetikett + stolplinje i läktplan";
+const APP_VERSION = "v1.40 · reservläge: visa projektfil som text";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -156,10 +156,13 @@ const PRICE_DEFAULTS = {
   "Takstolar / reglar": 55, "Bärlinor": 130, "Stolpar": 160, "Råspont": 85, "Takpapp": 35,
   "Ströläkt": 9, "Bärläkt": 16, "Takyta": 190, "Farmarskruv": 1.2, "Överlappsskruv": 0.8, "Butylband": 14,
 };
-const priceFor = (p, name) => {
+const priceFor = (p, name, fallback) => {
   const v = p.prices ? p.prices[name] : undefined;
-  return (v === undefined || v === null || v === "" || isNaN(v)) ? (PRICE_DEFAULTS[name] ?? 0) : v;
+  if (v !== undefined && v !== null && v !== "" && !isNaN(v)) return v;
+  return fallback !== undefined ? fallback : (PRICE_DEFAULTS[name] ?? 0);
 };
+// Pris (kr/m²) per råspont-dimension/produkt – används som förval beroende på val
+const RASPONT_PRICE_BY_DIM = { "17×95": 85, "22×95": 95, "23×120": 105, "RÅSPONTLUCKA 540×3600": 201 };
 const kr = (v) => `${Math.round(v).toLocaleString("sv-SE")} kr`;
 
 function bomRows(p) {
@@ -169,7 +172,7 @@ function bomRows(p) {
     { name: "Takstolar / reglar", dim: f.rafterDim, antal: `${b.rafters} st`, detalj: `cc ${f.rafterCC} mm · ${b.fack} fack · längd ca ${num(b.rafterOrder)} m`, pq: b.rafters * b.rafterOrder, pu: "lpm" },
     { name: "Bärlinor", dim: f.beamDim, antal: `${b.beams} st`, detalj: `längd ${num(b.beamLen)} m · fram vid stolplinjen + bak vid huset`, pq: b.beams * b.beamLen, pu: "lpm" },
     { name: "Stolpar", dim: f.postDim, antal: `${b.posts} st`, detalj: b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`, pq: b.posts, pu: "st" },
-    { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea)} m²`, detalj: `hela takytan (verklig åtgång)`, pq: b.roofArea, pu: "m²" },
+    { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea)} m²`, detalj: `hela takytan (verklig åtgång)`, pq: b.roofArea, pu: "m²", priceFallback: RASPONT_PRICE_BY_DIM[f.raspontDim || "17×95"] },
     { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${num(b.roofArea)} m²`, detalj: `underlagspapp på råspont (verklig åtgång)`, pq: b.roofArea, pu: "m²" },
     { name: "Ströläkt", dim: f.stroDim || "25×48", antal: `${b.stroCols} st`, detalj: `cc ${f.stroCC || 600} mm · längs takfallet · ca ${num(b.stroLM)} lpm`, pq: b.stroLM, pu: "lpm" },
     { name: "Bärläkt", dim: f.battenDim, antal: `${b.battenRows} rader`, detalj: `cc ${f.battenCC} mm · ca ${num(b.battenLM)} lpm (takbredd ${num(b.roofW)} m inkl. sidoutskjut)`, pq: b.battenLM, pu: "lpm" },
@@ -206,6 +209,7 @@ const newOpening = (kind) =>
 
 const DEFAULT_PROJECT = {
   name: "Mitt altanprojekt",
+  photo: null, // { dataUrl, w, h }
   prices: {},
   house: {
     width: 18, depth: 9, height: 5, overhang: 1.5, roofPitch: 24,
@@ -436,6 +440,76 @@ function Switch({ on, onChange }) {
   );
 }
 
+// Läser en bildfil, skalar ner den (max 1280px bred) och komprimerar till JPEG
+function loadAndDownscaleImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Kunde inte läsa filen"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Kunde inte läsa bilden"));
+      img.onload = () => {
+        const maxDim = 1280;
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.82), w, h });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function PhotoPicker({ project, set }) {
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const photo = project.photo;
+  const onPick = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const img = await loadAndDownscaleImage(file);
+      set((p) => ({ ...p, photo: { ...img, caption: (p.photo && p.photo.caption) || "Projektfoto" } }));
+    } catch (_) { /* ignorera */ }
+    setBusy(false);
+  };
+  return (
+    <div style={{ marginTop: 9 }}>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onPick} style={{ display: "none" }} />
+      {photo ? (
+        <div style={{ background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 9, padding: 7 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <img src={photo.dataUrl} alt="Projektbild" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: T.dim, flex: 1 }}>Bild tillagd – syns i Ritningar och PDF</span>
+            <button onClick={() => fileRef.current && fileRef.current.click()} title="Byt bild" style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.text, borderRadius: 7, padding: "6px 8px", cursor: "pointer" }}>
+              <ImageIcon size={14} />
+            </button>
+            <button onClick={() => set((p) => ({ ...p, photo: null }))} title="Ta bort bild" style={{ background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 7, padding: "6px 8px", cursor: "pointer" }}>
+              <XIcon size={14} />
+            </button>
+          </div>
+          <input
+            value={photo.caption ?? "Projektfoto"}
+            onChange={(e) => set((p) => ({ ...p, photo: { ...p.photo, caption: e.target.value } }))}
+            placeholder="Rubrik, t.ex. Framsidan"
+            style={{ width: "100%", marginTop: 7, padding: "7px 9px", background: T.panel, border: `1px solid ${T.line}`, borderRadius: 7, color: T.text, fontSize: 12.5, outline: "none", boxSizing: "border-box" }}
+          />
+        </div>
+      ) : (
+        <button onClick={() => fileRef.current && fileRef.current.click()} disabled={busy} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: T.panel2, border: `1px dashed ${T.line}`, color: T.dim, borderRadius: 9, padding: "9px", cursor: "pointer", fontSize: 13 }}>
+          <ImageIcon size={14} /> {busy ? "Bearbetar bild…" : "Lägg till bild av huset"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClose, onSave, onOpenProjects }) {
   const d = derive(project);
   const lowHeadroom = d.staEdge < 2.0;
@@ -486,33 +560,34 @@ function Sidebar({ project, set, openSection, setOpenSection, width = 320, onClo
 
   return (
     <aside style={{ width, flexShrink: 0, height: "100%", background: T.panel, borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ padding: 16, borderBottom: `1px solid ${T.line}` }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 11.5, color: T.dim, letterSpacing: 1, textTransform: "uppercase" }}>Projekt</span>
-          {onClose && (
-            <button onClick={onClose} style={{ background: "transparent", border: "none", color: T.dim, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>
-              Stäng ✕
-            </button>
-          )}
-        </div>
-        <input
-          value={project.name}
-          onChange={(e) => set((p) => ({ ...p, name: e.target.value }))}
-          style={{ width: "100%", marginTop: 7, padding: "9px 11px", background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 9, color: T.text, fontSize: 15, fontWeight: 600, outline: "none" }}
-        />
-        {(onSave || onOpenProjects) && (
-          <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
-            <button onClick={onSave} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 9, padding: "8px", cursor: "pointer", fontSize: 13 }}>
-              <Save size={14} /> Spara
-            </button>
-            <button onClick={onOpenProjects} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 9, padding: "8px", cursor: "pointer", fontSize: 13 }}>
-              <FolderOpen size={14} /> Mina projekt
-            </button>
-          </div>
-        )}
-      </div>
-
       <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", boxSizing: "border-box" }}>
+        <div style={{ padding: 16, borderBottom: `1px solid ${T.line}` }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 11.5, color: T.dim, letterSpacing: 1, textTransform: "uppercase" }}>Projekt</span>
+            {onClose && (
+              <button onClick={onClose} style={{ background: "transparent", border: "none", color: T.dim, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>
+                Stäng ✕
+              </button>
+            )}
+          </div>
+          <input
+            value={project.name}
+            onChange={(e) => set((p) => ({ ...p, name: e.target.value }))}
+            style={{ width: "100%", marginTop: 7, padding: "9px 11px", background: T.panel2, border: `1px solid ${T.line}`, borderRadius: 9, color: T.text, fontSize: 15, fontWeight: 600, outline: "none" }}
+          />
+          {(onSave || onOpenProjects) && (
+            <div style={{ display: "flex", gap: 8, marginTop: 9 }}>
+              <button onClick={onSave} title="Sparar i appen och öppnar delning för att spara filen" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 9, padding: "8px", cursor: "pointer", fontSize: 13 }}>
+                <Save size={14} /> Spara
+              </button>
+              <button onClick={onOpenProjects} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 9, padding: "8px", cursor: "pointer", fontSize: 13 }}>
+                <FolderOpen size={14} /> Mina projekt
+              </button>
+            </div>
+          )}
+          <PhotoPicker project={project} set={set} />
+        </div>
+
         {/* HUS */}
         <Section title="Hus" Icon={Home} accent={T.sky} open={openSection === "house"} onToggle={() => toggle("house")}>
           <NumberField label="Husets bredd (fasadlängd)" value={project.house.width} onChange={(v) => setHouse("width", v)} min={1} max={60} />
@@ -2030,8 +2105,8 @@ function PriceInput({ value, unit, onChange }) {
 
 function BomTable({ project, set }) {
   const rows = bomRows(project);
-  const price = (name) => priceFor(project, name);
-  const total = rows.reduce((s, r) => s + r.pq * price(r.name), 0);
+  const price = (r) => priceFor(project, r.name, r.priceFallback);
+  const total = rows.reduce((s, r) => s + r.pq * price(r), 0);
   const setPrice = (name, v) => set && set((p) => ({ ...p, prices: { ...(p.prices || {}), [name]: v } }));
   return (
     <div style={{ background: "#fff", border: "1px solid #d4d9df", borderRadius: 12, overflow: "hidden" }}>
@@ -2054,8 +2129,8 @@ function BomTable({ project, set }) {
                 <div style={{ color: "#94a3b8", fontSize: 11 }}>{r.dim} · {r.detalj}</div>
               </td>
               <td style={{ padding: "8px 4px", textAlign: "right", whiteSpace: "nowrap", color: "#475569" }}>{r.antal}</td>
-              <td style={{ padding: "8px 4px", textAlign: "right" }}><PriceInput value={price(r.name)} unit={r.pu} onChange={(v) => setPrice(r.name, v)} /></td>
-              <td style={{ padding: "8px 8px", textAlign: "right", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>{kr(r.pq * price(r.name))}</td>
+              <td style={{ padding: "8px 4px", textAlign: "right" }}><PriceInput value={price(r)} unit={r.pu} onChange={(v) => setPrice(r.name, v)} /></td>
+              <td style={{ padding: "8px 8px", textAlign: "right", fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>{kr(r.pq * price(r))}</td>
             </tr>
           ))}
         </tbody>
@@ -2096,7 +2171,7 @@ const STRO_DIMS = ["25×25", "25×48", "34×70", "45×45"];
 const BATTEN_DIMS = ["25×48", "34×70", "45×45", "45×70"];
 const BEAM_DIMS = ["45×195 c24", "45×220 c24", "45×220", "56×225 limträ", "90×225 limträ", "115×225 limträ"];
 const POST_DIMS = ["95×95", "120×120", "90×90 limträ", "115×115 limträ"];
-const RASPONT_DIMS = ["17×95", "22×95", "23×120"];
+const RASPONT_DIMS = ["17×95", "22×95", "23×120", "RÅSPONTLUCKA 540×3600"];
 const PAPP_TYPES = ["YEP 2500", "YAM 2000", "YEP 3500", "Underlagspapp"];
 const ROOF_TYPES = ["TP20 plåt", "Klicktak"];
 
@@ -2251,10 +2326,29 @@ function RoofFramingDrawing({ project, width = 720 }) {
   );
 }
 
+function PhotoDrawing({ project, width = 720 }) {
+  const photo = project.photo;
+  if (!photo || !photo.dataUrl) return null;
+  const aspect = (photo.h && photo.w) ? photo.h / photo.w : 0.6;
+  const pad = 20;
+  const imgW = Math.round(width * 0.4); // fotot är bara en del av det fullbreda arket
+  const imgH = Math.round(imgW * aspect);
+  const H = imgH + pad * 2;
+  const x = Math.round((width - imgW) / 2);
+  return (
+    <Paper title={(photo.caption || "Projektfoto").toUpperCase()} scaleNote="" width={width} height={H}>
+      <rect x="0" y="0" width={width} height={H} fill="#fff" />
+      <image href={photo.dataUrl} xlinkHref={photo.dataUrl} x={x} y={pad} width={imgW} height={imgH} preserveAspectRatio="xMidYMid slice" />
+      <rect x={x} y={pad} width={imgW} height={imgH} fill="none" stroke="#e2e8f0" strokeWidth="1" />
+    </Paper>
+  );
+}
+
 function DrawingsView({ project }) {
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 22 }}>
       <div style={{ maxWidth: 760, margin: "0 auto", display: "grid", gap: 18 }}>
+        <PhotoDrawing project={project} />
         <PlanDrawing project={project} />
         <FacadeDrawing project={project} />
         <SectionDrawing project={project} />
@@ -2283,6 +2377,7 @@ function PrintLayout({ project }) {
         </div>
       </div>
       <div style={{ display: "grid", gap: 16 }}>
+        <PhotoDrawing project={project} width={700} />
         <PlanDrawing project={project} width={700} />
         <FacadeDrawing project={project} width={700} />
         <SectionDrawing project={project} width={700} />
@@ -2364,7 +2459,7 @@ function bomTableSvgBlock(rows, project, width) {
   b += `<line x1="0" y1="${titleH + headH}" x2="${width}" y2="${titleH + headH}" stroke="#e6e9ed"/>`;
   rows.forEach((r, i) => {
     const y = titleH + headH + i * rowH, ty = y + 16;
-    const price = priceFor(project, r.name);
+    const price = priceFor(project, r.name, r.priceFallback);
     const summa = r.pq * price;
     total += summa;
     b += `<text x="${cx.del}" y="${ty}" font-family="sans-serif" font-size="11.5" font-weight="600" fill="#0f172a">${xmlEsc(r.name)}</text>`;
@@ -2501,6 +2596,7 @@ export default function App() {
 
   // --- Spara / öppna projekt ---
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [fileTextModal, setFileTextModal] = useState(null); // JSON-text att kopiera manuellt
   const [saves, setSaves] = useState({});
   const [toast, setToast] = useState(null);
   const fileRef = useRef(null);
@@ -2527,6 +2623,7 @@ export default function App() {
     const next = { ...loadSaves(), [name]: { project, savedAt: Date.now() } };
     storeSaves(next); setSaves(next);
     showToast(`Sparat: ${name}`);
+    exportProjectFile();
   };
   const loadProject = (name) => {
     const s = loadSaves()[name];
@@ -2539,6 +2636,7 @@ export default function App() {
     const next = { ...loadSaves() }; delete next[name];
     storeSaves(next); setSaves(next);
   };
+  const showFileText = () => setFileTextModal(JSON.stringify(project, null, 2));
   const exportProjectFile = async () => {
     const name = `${(project.name || "altan").replace(/[^\w\-åäöÅÄÖ ]+/g, "").trim() || "altan"}.json`;
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
@@ -2639,11 +2737,11 @@ export default function App() {
         {/* Toppbar */}
         <header style={{ height: 56, flexShrink: 0, display: "flex", alignItems: "center", gap: isMobile ? 8 : 14, padding: isMobile ? "0 10px" : "0 16px", borderBottom: `1px solid ${T.line}`, background: T.panel }}>
           {isMobile ? (
-            <button onClick={() => setSidebarOpen(true)} title="Inställningar" style={{ display: "grid", placeItems: "center", width: 38, height: 38, background: "#10161e", border: `1px solid ${T.line}`, borderRadius: 9, color: T.text, cursor: "pointer", flexShrink: 0 }}>
+            <button onClick={() => { if (pdf) closePdf(); setSidebarOpen(true); }} title="Inställningar" style={{ display: "grid", placeItems: "center", width: 38, height: 38, background: "#10161e", border: `1px solid ${T.line}`, borderRadius: 9, color: T.text, cursor: "pointer", flexShrink: 0 }}>
               <Menu size={18} />
             </button>
           ) : (
-            <button onClick={goHome} title="Till start" style={{ display: "flex", alignItems: "center", gap: 9, background: "transparent", border: "none", color: T.text, cursor: "pointer" }}>
+            <button onClick={() => { if (pdf) closePdf(); setSidebarOpen(false); goHome(); }} title="Till start" style={{ display: "flex", alignItems: "center", gap: 9, background: "transparent", border: "none", color: T.text, cursor: "pointer" }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", background: `linear-gradient(135deg, ${T.wood}, ${T.woodDark})`, color: "#1a1206" }}><Ruler size={17} /></div>
               <span style={{ fontWeight: 700, fontSize: 14.5 }}>Altanritare</span>
             </button>
@@ -2651,7 +2749,7 @@ export default function App() {
 
           <div style={{ marginLeft: isMobile ? 0 : 8, display: "flex", background: "#10161e", border: `1px solid ${T.line}`, borderRadius: 10, padding: 3, gap: 3, overflowX: "auto" }}>
             {tabs.map(({ id, label, Icon }) => (
-              <button key={id} onClick={() => setView(id)} style={{
+              <button key={id} onClick={() => { if (pdf) closePdf(); if (sidebarOpen) setSidebarOpen(false); setView(id); }} style={{
                 display: "flex", alignItems: "center", gap: 7, padding: isMobile ? "8px 10px" : "7px 14px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13.5, whiteSpace: "nowrap",
                 background: view === id ? T.panel2 : "transparent", color: view === id ? T.text : T.dim, fontWeight: view === id ? 650 : 500,
               }}><Icon size={15} />{!isMobile && ` ${label}`}</button>
@@ -2714,6 +2812,37 @@ export default function App() {
         </div>
       )}
 
+      {/* Reservlösning: visa projektfilen som text för manuell kopiering */}
+      {fileTextModal && (
+        <div onClick={() => setFileTextModal(null)} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(5,8,12,0.78)", display: "grid", placeItems: "center", padding: 16, fontFamily: FONT }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "min(520px, 100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", background: T.panel, border: `1px solid ${T.line}`, borderRadius: 16, padding: 20, color: T.text }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Kopiera projektet som text</div>
+            <div style={{ fontSize: 13, color: T.dim, marginBottom: 12, lineHeight: 1.5 }}>
+              Markera och kopiera texten nedan (eller tryck "Kopiera"), och klistra in den i t.ex. Anteckningar eller en ny fil i Filer-appen för att spara en backup.
+            </div>
+            <textarea
+              readOnly
+              value={fileTextModal}
+              onFocus={(e) => e.target.select()}
+              style={{ flex: 1, minHeight: 260, width: "100%", boxSizing: "border-box", background: "#0b0f14", border: `1px solid ${T.line}`, borderRadius: 10, color: T.text, fontFamily: "ui-monospace, monospace", fontSize: 11.5, padding: 10, resize: "none" }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button
+                onClick={async () => {
+                  try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(fileTextModal); }
+                    else { const ta = document.createElement("textarea"); ta.value = fileTextModal; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+                    showToast("Kopierat till urklipp");
+                  } catch (_) { showToast("Kunde inte kopiera automatiskt – markera texten manuellt"); }
+                }}
+                style={{ flex: 1, background: T.wood, color: "#1a1206", border: "none", borderRadius: 10, padding: "11px", cursor: "pointer", fontSize: 14, fontWeight: 650 }}
+              >Kopiera</button>
+              <button onClick={() => setFileTextModal(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${T.line}`, color: T.dim, borderRadius: 10, padding: "11px", cursor: "pointer", fontSize: 14 }}>Stäng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {exportError && (
         <div style={{ position: "fixed", zIndex: 10000, left: "50%", bottom: 24, transform: "translateX(-50%)", maxWidth: "90%", background: "#2a1414", border: "1px solid #5a2a2a", color: "#ffd9d9", padding: "11px 16px", borderRadius: 11, fontSize: 13, fontFamily: FONT, display: "flex", gap: 12, alignItems: "center" }}>
           <span>Kunde inte skapa PDF: {exportError}</span>
@@ -2758,8 +2887,11 @@ export default function App() {
               <button onClick={() => fileRef.current && fileRef.current.click()} style={{ flex: 1, background: T.panel2, border: `1px solid ${T.line}`, color: T.text, borderRadius: 10, padding: "10px", cursor: "pointer", fontSize: 13 }}>Öppna fil</button>
             </div>
             <input ref={fileRef} type="file" accept="application/json,.json" onChange={importProjectFile} style={{ display: "none" }} />
+            <button onClick={() => { setProjectsOpen(false); showFileText(); }} style={{ width: "100%", marginTop: 8, background: "transparent", border: `1px dashed ${T.line}`, color: T.dim, borderRadius: 10, padding: "8px", cursor: "pointer", fontSize: 12.5 }}>
+              Fungerar inte delningen? Visa som text att kopiera
+            </button>
             <div style={{ fontSize: 11.5, color: T.dim, marginTop: 10, lineHeight: 1.5 }}>
-              Sparade projekt ligger i denna webbläsare. "Dela / spara fil" öppnar delningsmenyn där du kan välja "Spara i Filer" – bra för backup eller för att flytta projektet till en annan enhet.
+              Sparade projekt ligger i denna webbläsare. "Spara" i sidopanelen sparar även en delningsbar fil direkt. Om delningen inte fungerar i just din webbläsarvy (t.ex. en app-inbäddad webbläsare) – öppna sidan i Safari direkt, eller använd "Visa som text" ovan.
             </div>
           </div>
         </div>
