@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.40 · reservläge: visa projektfil som text";
+const APP_VERSION = "v1.41 · större foto, rubrik under bild i PDF, bygglovstext borttagen";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -2331,15 +2331,20 @@ function PhotoDrawing({ project, width = 720 }) {
   if (!photo || !photo.dataUrl) return null;
   const aspect = (photo.h && photo.w) ? photo.h / photo.w : 0.6;
   const pad = 20;
-  const imgW = Math.round(width * 0.4); // fotot är bara en del av det fullbreda arket
+  const caption = (photo.caption || "").trim();
+  const capH = caption ? 26 : 0;
+  const imgW = Math.round(width * 0.48); // ≈20% större än tidigare (0.4 → 0.48)
   const imgH = Math.round(imgW * aspect);
-  const H = imgH + pad * 2;
+  const H = imgH + pad * 2 + capH;
   const x = Math.round((width - imgW) / 2);
   return (
-    <Paper title={(photo.caption || "Projektfoto").toUpperCase()} scaleNote="" width={width} height={H}>
+    <Paper title="PROJEKTFOTO" scaleNote="" width={width} height={H}>
       <rect x="0" y="0" width={width} height={H} fill="#fff" />
       <image href={photo.dataUrl} xlinkHref={photo.dataUrl} x={x} y={pad} width={imgW} height={imgH} preserveAspectRatio="xMidYMid slice" />
       <rect x={x} y={pad} width={imgW} height={imgH} fill="none" stroke="#e2e8f0" strokeWidth="1" />
+      {caption && (
+        <text x={width / 2} y={pad + imgH + 18} textAnchor="middle" fontFamily="sans-serif" fontSize="13.5" fontWeight="600" fill="#334155">{caption}</text>
+      )}
     </Paper>
   );
 }
@@ -2412,11 +2417,10 @@ const xmlEsc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").rep
 
 function titleSvgBlock(p) {
   const today = new Date().toLocaleDateString("sv-SE");
-  const w = 760, h = 64;
+  const w = 760, h = 50;
   const str = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
     + `<rect width="${w}" height="${h}" fill="#fff"/>`
-    + `<text x="0" y="15" font-family="sans-serif" font-size="11" letter-spacing="1.5" fill="#64748b">BYGGLOVSRITNING · ALTAN</text>`
-    + `<text x="0" y="44" font-family="sans-serif" font-size="23" font-weight="800" fill="#0f172a">${xmlEsc(p.name || "Altanprojekt")}</text>`
+    + `<text x="0" y="28" font-family="sans-serif" font-size="23" font-weight="800" fill="#0f172a">${xmlEsc(p.name || "Altanprojekt")}</text>`
     + `<text x="${w}" y="20" text-anchor="end" font-family="sans-serif" font-size="12" fill="#475569">Datum: ${today}</text>`
     + `<line x1="0" y1="${h - 6}" x2="${w}" y2="${h - 6}" stroke="#0f172a" stroke-width="2"/></svg>`;
   return { str, w, h };
