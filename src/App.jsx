@@ -28,7 +28,7 @@ const T = {
 
 /* ---------- Hjälpare ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const APP_VERSION = "v1.50 · rubricerade grupper i Virke & cc-avstånd";
+const APP_VERSION = "v1.53 · trekantslist i Virke & cc-avstånd";
 
 // Svensk talformatering: 2.7 -> "2,7", 4 -> "4"
 const num = (v) => {
@@ -159,17 +159,23 @@ function computeBom(p) {
   const platesAlong = Math.max(1, Math.ceil(coveredSlope / plateLen));
   const platesTotal = platesAcross * platesAlong;
   const purchasedPlateArea = platesTotal * plateLen * plateWidth; // faktisk köpt yta (hela plåtar, inkl. kaputtag)
+  const pappRollArea = f.pappRollArea || 20; // m² per rulle (kontrollera mot vald produkt)
+  const pappRolls = Math.max(1, Math.ceil(roofArea / pappRollArea));
+  const pappPurchasedArea = pappRolls * pappRollArea; // faktisk köpt yta (hela rullar)
+  const trekantLen = f.trekantLen || 3.6; // lagerlängd trekantslist
+  const trekantPiecesPerRow = Math.max(1, Math.ceil(roofW / trekantLen));
+  const trekantBoards = trekantPiecesPerRow; // en rad längs takfoten
   const farmar = Math.ceil(roofArea * (isKlick ? 6 : 9));
   const overlap = isKlick ? 0 : Math.ceil(seams * coveredSlope * 3);
   const butyl = Math.ceil(seams * coveredSlope + roofW);
   const backBeamAt = p.roof.backBeam === "takfot" ? "vid takfoten" : "vid huset";
-  return { fack, rafters, slopeLen, rafterOrder, coverStart, coveredSlope, battenRows, battenLM, battenPiecesPerRow, battenBoards, battenLektLen, battenPurchasedLen, stroCols, stroLM, stroPiecesPerStrip, stroBoards, stroLektLen, stroPurchasedLen, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, covering, isKlick, seams, plateWidth, platesAcross, plateLen, platesAlong, platesTotal, purchasedPlateArea, farmar, overlap, butyl, backBeamAt, angleDeg: d.angleDeg };
+  return { fack, rafters, slopeLen, rafterOrder, coverStart, coveredSlope, battenRows, battenLM, battenPiecesPerRow, battenBoards, battenLektLen, battenPurchasedLen, stroCols, stroLM, stroPiecesPerStrip, stroBoards, stroLektLen, stroPurchasedLen, beams: 2, beamLen: p.roof.width, front, back, posts, roofArea, roofW, covering, isKlick, seams, plateWidth, platesAcross, plateLen, platesAlong, platesTotal, purchasedPlateArea, pappRollArea, pappRolls, pappPurchasedArea, trekantLen, trekantPiecesPerRow, trekantBoards, farmar, overlap, butyl, backBeamAt, angleDeg: d.angleDeg };
 }
 
 // Grova ungefärliga à-priser (kr per enhet) – användaren redigerar själv.
 const PRICE_DEFAULTS = {
   "Takstolar / reglar": 55, "Bärlinor": 130, "Stolpar": 160, "Råspont": 85, "Takpapp": 35,
-  "Ströläkt": 9, "Bärläkt": 16, "Farmarskruv": 1.2, "Överlappsskruv": 0.8, "Butylband": 14,
+  "Ströläkt": 9, "Bärläkt": 16, "Trekantslist": 25, "Farmarskruv": 1.2, "Överlappsskruv": 0.8, "Butylband": 14,
 };
 // Pris (kr/m²) per taktäckningstyp – förval, baseras på faktiskt köpt (hela) plåtyta
 const COVERING_PRICE_BY_TYPE = { "TP20 plåt": 190, "Klicktak": 220 };
@@ -210,9 +216,10 @@ function bomRows(p) {
     { name: "Bärlinor", dim: f.beamDim, antal: `${b.beams} st`, detalj: `längd ${num(b.beamLen)} m · fram vid stolplinjen + bak vid huset`, pq: b.beams * b.beamLen, pu: "lpm" },
     { name: "Stolpar", dim: f.postDim, antal: `${b.posts} st`, detalj: b.back ? `${b.front} fram + ${b.back} bak` : `${b.front} fram · bak infäst i vägg`, pq: b.posts, pu: "st" },
     { name: "Råspont", dim: f.raspontDim || "17×95", antal: `${num(b.roofArea)} m²`, detalj: (() => { const rb = raspontBoardCount(f.raspontDim || "17×95", b.roofArea); return `hela takytan (verklig åtgång) · ca ${rb.count} st à ${num(rb.lenM)} m (${rb.widthMm} mm bred) · med ~${rb.spillPct}% spill ca ${rb.withSpill} st`; })(), pq: b.roofArea, pu: "m²", priceFallback: RASPONT_PRICE_BY_DIM[f.raspontDim || "17×95"] },
-    { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${num(b.roofArea)} m²`, detalj: `underlagspapp på råspont (verklig åtgång)`, pq: b.roofArea, pu: "m²" },
-    { name: "Ströläkt", dim: f.stroDim || "25×48", antal: `ca ${num(b.stroPurchasedLen)} lpm (inköpt)`, detalj: `cc ${f.stroCC || 600} mm · längs takfallet · behov ca ${num(b.stroLM)} lpm · ${b.stroBoards} st à ${num(b.stroLektLen)} m${b.stroPiecesPerStrip > 1 ? ` (${b.stroPiecesPerStrip} per läkt, skarvas)` : ""}`, pq: b.stroPurchasedLen, pu: "lpm" },
-    { name: "Bärläkt", dim: f.battenDim, antal: `ca ${num(b.battenPurchasedLen)} lpm (inköpt)`, detalj: `cc ${f.battenCC} mm · ${b.battenRows} rader (takbredd ${num(b.roofW)} m inkl. sidoutskjut) · behov ca ${num(b.battenLM)} lpm · ${b.battenBoards} st à ${num(b.battenLektLen)} m${b.battenPiecesPerRow > 1 ? ` (${b.battenPiecesPerRow} per rad, skarvas)` : ""}`, pq: b.battenPurchasedLen, pu: "lpm" },
+    { name: "Takpapp", dim: f.papptyp || "YEP 2500", antal: `${b.pappRolls} rullar`, detalj: `underlagspapp på råspont · à ${num(b.pappRollArea)} m²/rulle · täcker ${num(b.pappPurchasedArea)} m² (behov ${num(b.roofArea)} m²)`, pq: b.pappPurchasedArea, pu: "m²" },
+    { name: "Ströläkt", dim: f.stroDim || "25×48", antal: `ca ${num(b.stroPurchasedLen)} lpm`, detalj: `cc ${f.stroCC || 600} mm · längs takfallet · behov ca ${num(b.stroLM)} lpm · ${b.stroBoards} st à ${num(b.stroLektLen)} m${b.stroPiecesPerStrip > 1 ? ` (${b.stroPiecesPerStrip} per läkt, skarvas)` : ""}`, pq: b.stroPurchasedLen, pu: "lpm" },
+    { name: "Bärläkt", dim: f.battenDim, antal: `ca ${num(b.battenPurchasedLen)} lpm`, detalj: `cc ${f.battenCC} mm · ${b.battenRows} rader (takbredd ${num(b.roofW)} m inkl. sidoutskjut) · behov ca ${num(b.battenLM)} lpm · ${b.battenBoards} st à ${num(b.battenLektLen)} m${b.battenPiecesPerRow > 1 ? ` (${b.battenPiecesPerRow} per rad, skarvas)` : ""}`, pq: b.battenPurchasedLen, pu: "lpm" },
+    { name: "Trekantslist", dim: f.trekantDim || "45×45", antal: `${b.trekantBoards} st`, detalj: `vid takfoten · längd ${num(b.roofW)} m (takbredd inkl. sidoutskjut) · à ${num(b.trekantLen)} m${b.trekantPiecesPerRow > 1 ? ` (skarvas)` : ""}`, pq: b.trekantBoards * b.trekantLen, pu: "lpm" },
     { name: "Farmarskruv", dim: "för infästning", antal: `${b.farmar} st`, detalj: `ca ${b.isKlick ? 6 : 9} st/m² i bärläkt`, pq: b.farmar, pu: "st" },
     ...(b.isKlick ? [] : [{ name: "Överlappsskruv", dim: "för sidöverlapp", antal: `${b.overlap} st`, detalj: `${b.seams} skarv${b.seams === 1 ? "" : "ar"} · cc ca 330 mm`, pq: b.overlap, pu: "st" }]),
     { name: "Butylband", dim: "tätningsband", antal: `ca ${b.butyl} m`, detalj: `nock + längsgående skarvar`, pq: b.butyl, pu: "m" },
@@ -271,6 +278,9 @@ const DEFAULT_PROJECT = {
     battenLektLen: 3.6,
     plateLen: 3.5,
     plateWidth: 1.0,
+    pappRollArea: 20,
+    trekantDim: "45×45",
+    trekantLen: 3.6,
   },
   // Tomtgränser som fasta linjer. pos = absolut koordinat (m):
   // front.pos = y (mätt från husbaksidan), left/right.pos = x.
@@ -2148,9 +2158,13 @@ function BomTable({ project, set }) {
   const price = (r) => priceFor(project, r.name, r.priceFallback);
   const total = rows.reduce((s, r) => s + r.pq * price(r), 0);
   const setPrice = (name, v) => set && set((p) => ({ ...p, prices: { ...(p.prices || {}), [name]: v } }));
+  const roofArea = computeBom(project).roofArea;
   return (
     <div style={{ background: "#fff", border: "1px solid #d4d9df", borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "11px 16px", borderBottom: "1px solid #e6e9ed", background: "#f7f8fa", fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>MATERIALLISTA MED KOSTNAD (UPPSKATTAD)</div>
+      <div style={{ padding: "11px 16px", borderBottom: "1px solid #e6e9ed", background: "#f7f8fa", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 700, color: "#0f172a" }}>MATERIALLISTA MED KOSTNAD (UPPSKATTAD)</span>
+        <span style={{ fontSize: 11.5, color: "#64748b", whiteSpace: "nowrap" }}>Takyta: {num(roofArea)} m²</span>
+      </div>
       <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
@@ -2183,7 +2197,7 @@ function BomTable({ project, set }) {
       </table>
       </div>
       <div style={{ padding: "10px 16px", borderTop: "1px solid #e6e9ed", fontSize: 11, color: "#94a3b8" }}>
-        À-priser är egna, redigerbara uppskattningar (kr per enhet) – skriv in dagspris från din bygghandel. Mängderna är den faktiska mängd som behöver köpas in (hela plåtar/läkt/brädor, inte bara teoretiskt behov) – ingen generell spillprocent behövs ovanpå. Priset är exkl. spik/frakt och gäller inte som offert. Kontrollera bärförmåga/snölast med konstruktör.
+        À-priser är egna, redigerbara uppskattningar (kr per enhet) – skriv in dagspris från din bygghandel. Mängderna är den faktiska mängd som behöver köpas in (hela plåtar/läkt/brädor, inte bara teoretiskt behov) – ingen generell spillprocent behövs ovanpå. Kontrollera bärförmåga/snölast med konstruktör.
       </div>
     </div>
   );
@@ -2211,6 +2225,7 @@ const STRO_DIMS = ["25×25", "25×48", "34×70", "45×45"];
 const BATTEN_DIMS = ["25×48", "34×70", "45×45", "45×70"];
 const BEAM_DIMS = ["45×195 c24", "45×220 c24", "45×220", "56×225 limträ", "90×225 limträ", "115×225 limträ"];
 const POST_DIMS = ["95×95", "120×120", "90×90 limträ", "115×115 limträ"];
+const TREKANT_DIMS = ["45×45", "34×45", "50×50"];
 const RASPONT_DIMS = ["17×95", "22×95", "23×120", "RÅSPONTLUCKA 540×3600"];
 const LEKT_LENGTHS = ["3,6 m", "4,2 m", "4,8 m"];
 const PAPP_TYPES = ["YEP 2500", "YAM 2000", "YEP 3500", "Underlagspapp"];
@@ -2270,11 +2285,27 @@ function MaterialView({ project, set }) {
                     options={LEKT_LENGTHS}
                   />
 
+                  {heading("Trekantslist")}
+                  <Select label="Dimension" value={f.trekantDim || "45×45"} onChange={(v) => setFrame("trekantDim", v)} options={TREKANT_DIMS} />
+                  <Select
+                    label="Lagerlängd"
+                    value={`${num(f.trekantLen || 3.6)} m`}
+                    onChange={(v) => setFrame("trekantLen", parseFloat(String(v).replace(",", ".")))}
+                    options={LEKT_LENGTHS}
+                  />
+                  <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 4px" }}>
+                    Läggs vid takfoten för att ge plåten rätt lutning ut mot droppkanten.
+                  </div>
+
                   {heading("Råspont")}
                   <Select label="Dimension" value={f.raspontDim || "17×95"} onChange={(v) => setFrame("raspontDim", v)} options={RASPONT_DIMS} />
 
                   {heading("Takpapp / underlagspapp")}
                   <Select label="Typ" value={f.papptyp || "YEP 2500"} onChange={(v) => setFrame("papptyp", v)} options={PAPP_TYPES} />
+                  <NumberField label="m² per rulle" unit="m²" value={f.pappRollArea || 20} onChange={(v) => setFrame("pappRollArea", v)} step={1} min={5} max={50} />
+                  <div style={{ fontSize: 11.5, color: T.dim, margin: "-6px 0 4px" }}>
+                    Står på rullens förpackning – vanligt är 20 m² (1 × 20 m) eller 10 m² (1 × 10 m).
+                  </div>
 
                   {heading("Bärlinor")}
                   <Select label="Dimension" value={f.beamDim} onChange={(v) => setFrame("beamDim", v)} options={BEAM_DIMS} />
@@ -2533,10 +2564,12 @@ function bomTableSvgBlock(rows, project, width) {
   const bodyBottom = titleH + headH + rows.length * rowH;
   const totalBottom = bodyBottom + totalH;
   const h = totalBottom + noteH + 2;
+  const roofArea = computeBom(project).roofArea;
   let total = 0;
   let b = `<rect x="0" y="0" width="${width}" height="${h}" fill="#fff" stroke="#d4d9df"/>`;
   b += `<rect x="0" y="0" width="${width}" height="${titleH}" fill="#f7f8fa"/>`;
   b += `<text x="${pad}" y="${titleH - 11}" font-family="sans-serif" font-size="13" font-weight="700" fill="#0f172a">MATERIALLISTA MED KOSTNAD (UPPSKATTAD)</text>`;
+  b += `<text x="${sumX}" y="${titleH - 11}" text-anchor="end" font-family="sans-serif" font-size="11" fill="#64748b">Takyta: ${num(roofArea)} m²</text>`;
   b += `<line x1="0" y1="${titleH}" x2="${width}" y2="${titleH}" stroke="#e6e9ed"/>`;
   const hy = titleH + headH - 7;
   b += `<text x="${cx.del}" y="${hy}" font-family="sans-serif" font-size="10.5" font-weight="600" fill="#64748b">DEL</text>`;
@@ -2562,7 +2595,7 @@ function bomTableSvgBlock(rows, project, width) {
   b += `<text x="${cx.apris + 60}" y="${bodyBottom + 19}" font-family="sans-serif" font-size="12" font-weight="700" fill="#0f172a" text-anchor="end">Totalt (ca)</text>`;
   b += `<text x="${sumX}" y="${bodyBottom + 19}" font-family="sans-serif" font-size="13" font-weight="800" fill="#0f172a" text-anchor="end">${xmlEsc(kr(total))}</text>`;
   b += `<line x1="0" y1="${totalBottom}" x2="${width}" y2="${totalBottom}" stroke="#e6e9ed"/>`;
-  b += `<text x="${pad}" y="${totalBottom + 18}" font-family="sans-serif" font-size="9.5" fill="#94a3b8">Mängder är faktisk inköpsmängd (hela plåtar/läkt/brädor). À-priser är egna uppskattningar. Exkl. spik/frakt. Ingen offert.</text>`;
+  b += `<text x="${pad}" y="${totalBottom + 18}" font-family="sans-serif" font-size="9.5" fill="#94a3b8">Mängder är faktisk inköpsmängd (hela plåtar/läkt/brädor). À-priser är egna uppskattningar.</text>`;
   return { str: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}">${b}</svg>`, w: width, h };
 }
 
